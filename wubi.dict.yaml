@@ -1,0 +1,22 @@
+
+---
+name: wubi
+version: "0.1"
+sort: by_weight  #字典初始排序，可选original或by_weight
+use_preset_vocabulary: false
+
+
+import_tables:
+  - cn_dicts_wubi/8105     # 字表
+  - cn_dicts_wubi/41448    # 生僻字表
+  
+  - cn_dicts_wubi/86_ci # /引导的句中简词
+
+  - zuci/ext            # 扩展词库
+  - zuci/base            #基础词库，2-3字词汇
+  - zuci/correlation     #关联词库，4字词汇，多为不同词频的2字语句连接起来起到合理组句的能力
+  - zuci/suggestion      #联想词库，5字以上词汇，多用于输入前半段第二候选可以出来整段
+  - zuci/compatible      #兼容词库，是基础词库的扩充，收录了多场景多种读音的词组
+  - zuci/poetry          #诗词
+  - zuci/place           #地名
+...

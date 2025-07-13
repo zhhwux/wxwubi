@@ -1,0 +1,11 @@
+# Rime schema
+# encoding: utf-8
+
+schema:
+  schema_id: wubici
+  name: "五笔词库·伪方案·勿用"
+
+translator:
+  dictionary: wubici
+  enable_user_dict: false
+  
