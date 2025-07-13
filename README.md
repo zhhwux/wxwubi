@@ -21,7 +21,7 @@
     - `Control+a`（五笔单开关）/ `Control+s`（五笔词开关）/ `Control+d`（五笔句开关）/ `Control+y`（音码开关）/ `Control+z`（显示拆分）/ `Control+q`（显示注音） 
 - （二）拼音反查
     1. 万象五笔的拼音反查是 '单引号前缀  `反引号后缀  ctrl+y开关  三种方式皆可
-    2. 默认小鹤+五笔辅（可以在wanxiang_pro.schema.yaml更改拼音类型）
+    2. 默认全拼+五笔辅（可以在wanxiang_pro.schema.yaml更改拼音类型）
     3. 拼音注音滤镜开关 ctrl+q
 - （三）五笔造词
     1. 五笔方案按`反引号作为前缀造词（保存在ti.txt）
