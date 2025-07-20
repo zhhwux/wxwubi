@@ -670,6 +670,8 @@ function F.func(input, env)
     
     -- 新增指令：永久简词转文件简词 /zwj
     if input_code == "/zwj" then
+     env.permanent_user_words = load_permanent_user_words()
+     env.permanent_seq_words_dict = reverse_seq_words(env.permanent_user_words)
         local file_path = rime_api.get_user_data_dir() .. "/custom_phrase/user.txt"
         local fd = io.open(file_path, "a")  -- 追加模式
         if not fd then
