@@ -10,7 +10,6 @@ schema:
     - wanxiang_radical  
     - wanxiang_pro
     - wubi_lookup 
-    - core2022
     - wubici
 
 switches:
@@ -96,14 +95,14 @@ engine:
     - lua_translator@*super_calculator     #超级计算器，Lua内查看高级用法
     - lua_translator@*new_statistics      #一个输入统计的脚本，以日、周、月、年、临时等维度的统计
     - table_translator@wanxiang_en         #挂接英文输入，参与中英混输
-    - table_translator@cn_en               #中英混合词汇表导入
+    - table_translator@wanxiang_cnanden    #中英混合词汇表导入
     - script_translator@wubi_user_dict   #五笔码自造词之使用词汇入口
     - script_translator@wubi_add_user    #五笔码自造词之制造词汇入口
     - script_translator@user_dict_set      #音码自造词之使用词汇入口
     - script_translator@add_user_dict      #音码自造词之制造词汇入口
     - lua_translator@*force_gc             #暴力 GC 降低内存
   filters:
-    - lua_filter@*common_filter                    #字符集过滤
+    - lua_filter@*chars_filter                      #字符集过滤
     - lua_filter@*autocap_filter                    #英文自动大写
     - reverse_lookup_filter@radical_reverse_lookup  #部件拆字滤镜，放在super_comment前面，进一步被超级注释处理以获得拼音编码+辅助码的提示
     - lua_filter@*super_preedit                     #输入码显示全拼并带上音调
@@ -236,9 +235,8 @@ wanxiang_en:
 
 
 # 中英混合词汇
-cn_en:
-  dictionary: ""
-  user_dict: en_dicts/pinyin   
+wanxiang_cnanden:
+  dictionary: wanxiang_cnanden
   db_class: stabledb
   enable_completion: true
   enable_sentence: false

@@ -52,7 +52,7 @@ style:
   # 详细设定请参考 <https://github.com/rime/weasel/wiki/字體設定>
   font_face: "Segoe UI Emoji, Microsoft YaHei, SF Pro, Noto Color Emoji"
   label_font_face: "Microsoft YaHei"       # 标签字体
-  comment_font_face: "黑体字根"     # 注释字体
+  comment_font_face: "86字根拆解"     # 注释字体
   font_point: 12                           # 全局字体字号
   label_font_point: 11                     # 标签字体字号，不设定 fallback 到 font_point
   comment_font_point: 11                   # 注释字体字号，不设定 fallback 到 font_point
