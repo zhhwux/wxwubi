@@ -34,7 +34,6 @@ columns:
 「	;n
 」	;m
 
-
 ^	oq
 $	ow
 \	oe
@@ -59,7 +58,6 @@ _	or
 ＝	ob	
 ⇒	on
 {}	om
-
 ！	a	0
 》	b	1
 〉	b	0
