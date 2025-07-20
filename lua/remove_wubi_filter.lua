@@ -220,6 +220,7 @@ function M.func(input, env)
     local other_wubici = {}
     local useless_candidates = {}
     local yc_candidates = {}    -- 预测候选词
+    local short_wubici = {}
     local short_wubi = {}
     
     for _, cand in ipairs(unique_candidates) do
@@ -236,7 +237,9 @@ function M.func(input, env)
             table_insert(wubi_sentence, cand)
         elseif iletter_count ~= cletter_count then
             table_insert(useless_candidates, cand)
-        elseif cand.type == "phrase" and not preedit:find("[_*]") then
+        elseif cand.type == "phrase" and utf8_len(cand.text) >= 2 then
+            table_insert(short_wubici, cand)
+        elseif cand.type == "phrase" and not preedit:find("['_*]") then
             table_insert(short_wubi, cand)
         else
             table_insert(wubi_wubici, cand)
@@ -451,6 +454,9 @@ function M.func(input, env)
             yield(cand)
           end
           if not context:get_option("chinese_english") and not context:get_option("yin") then
+              for _, cand in ipairs(short_wubici) do
+                 yield(cand)
+              end
               for _, cand in ipairs(before_wubici) do
                  yield(cand)
               end
