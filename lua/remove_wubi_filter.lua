@@ -27,18 +27,18 @@ function M.run_fuzhu(cand, initial_comment)
     return full_fuzhu_list, first_fuzhu_list
 end
 
--- 第一套候选词映射（五笔单模式）
+-- 第一套候选词映射
 local letter_map_wubi = {
-    q = "都", w = "得", e = "也", r = "了", t = "我", y = "到", u = "的", i = "为", o = "是", p = "行",
-    a = "来", s = "说", d = "中", f = "一", g = "就", h = "道", j = "人", k = "能", l = "而", 
-    z = "可", x = "和", c = "不", v = "要", b = "如", n = "在", m = "大"
+    q = "我", w = "人", e = "有", r = "的", t = "和", y = "主", u = "产", i = "不", o = "为", p = "这",
+    a = "工", s = "要", d = "在", f = "地", g = "一", h = "上", j = "是", k = "中", l = "国", 
+    z = "", x = "经", c = "以", v = "发", b = "了", n = "民", m = "同"
 }
 
--- 第二套候选词映射（五笔词模式）
+-- 第二套候选词映射
 local letter_map_wubici = {
-    q = "特别", w = "怎么", e = "突然", r = "因为", t = "我们", y = "当然", u = "工作", i = "为什么", o = "自己", p = "起来",
-    a = "那个", s = "出来", d = "哪个", f = "开始", g = "地方", h = "孩子", j = "什么", k = "没有", l = "而且", 
-    z = "可以", x = "应该", c = "不是", v = "这个", b = "如果", n = "现在", m = "所以"
+    q = "金", w = "八", e = "月", r = "白", t = "禾", y = "言", u = "立", i = "水", o = "火", p = "之",
+    a = "戈", s = "木", d = "石", f = "土", g = "王", h = "目", j = "日", k = "口", l = "田", 
+    z = "", x = "弓", c = "又", v = "女", b = "子", n = "已", m = "山"
 }
 
 -- 新增：候选词生成函数
@@ -377,6 +377,11 @@ function M.func(input, env)
                        if manual_cand then
                            yield(manual_cand)
                        end
+                       -- 五笔词候选词生成 (位置2)
+                       local manual_cand = M.generate_single_wubici(env, last_input)
+                       if manual_cand then
+                           yield(manual_cand)
+                       end
                        env.engine.context.input = last_input
                    else
                    end          
@@ -406,12 +411,6 @@ function M.func(input, env)
                        env.engine:commit_text(wubi_four) 
                  wubi_four = ""
                        local last_input = string_sub(input_str, -1)             
-                       
-                       -- 五笔词候选词生成 (位置3)
-                       local manual_cand = M.generate_single_wubici(env, last_input)
-                       if manual_cand then
-                           yield(manual_cand)
-                       end
                        env.engine.context.input = last_input
                    else
                    end          

@@ -259,17 +259,17 @@ local function translator(input, seg, env)
     -- 其他统计命令
     else
         if input == "/rtj" then
-            summary = "\n" .. string.rep("─", 14) .. "\n" .. format_daily_summary() .. "\n" .. string.rep("─", 14)
+            summary = string.rep("─", 14) .. "\n" .. format_daily_summary() .. "\n" .. string.rep("─", 14)
         elseif input == "/ztj" then
-            summary = "\n" .. string.rep("─", 14) .. "\n" .. format_weekly_summary() .. "\n" .. string.rep("─", 14)
+            summary = string.rep("─", 14) .. "\n" .. format_weekly_summary() .. "\n" .. string.rep("─", 14)
         elseif input == "/ytj" then
-            summary = "\n" .. string.rep("─", 14) .. "\n" .. format_monthly_summary() .. "\n" .. string.rep("─", 14)
+            summary = string.rep("─", 14) .. "\n" .. format_monthly_summary() .. "\n" .. string.rep("─", 14)
         elseif input == "/ntj" then
-            summary = "\n" .. string.rep("─", 14) .. "\n" .. format_yearly_summary() .. "\n" .. string.rep("─", 14)
+            summary = string.rep("─", 14) .. "\n" .. format_yearly_summary() .. "\n" .. string.rep("─", 14)
         elseif input == "/tj" then
             -- 添加方案和平台信息
             local header = string.format(
-                "\n◉ 方案：%s\n◉ 平台：%s\n%s\n",
+                "◉ 方案：%s\n◉ 平台：%s\n%s\n",
                 schema_name, platform_info, string.rep("─", 14))
             
             -- 组合所有统计报告，用横线分隔
