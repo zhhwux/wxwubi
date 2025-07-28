@@ -5,13 +5,11 @@ set_shuru_schema:              #配置此项就是选择什么输入法,同时�
   __include: 全拼             #可选解码规则有   全拼, 自然码, 自然龙, 汉心龙, 小鹤双拼, 搜狗双拼, 微软双拼, 智能ABC, 紫光双拼， 国标双拼， 龙三 选择一个填入
 set_fuzhu_schema:              #配置此项就是选择什么输入法,同时拆分反查和中英文混输也将匹配该输入方案
   __include: 直接辅助           #可选解码规则有:  直接辅助, 间接辅助  选择一个填入
-set_cn_en:                     #中英混输
-  user_dict: en_dicts/zrm      #可选的值有：en_dicts/pinyin， en_dicts/zrm， en_dicts/flypy ，en_dicts/mspy， en_dicts/sogou， en_dicts/pinyin
 super_comment:                 # 超级注释模块，子项配置 true 开启，false 关闭
   candidate_length: 1          # 候选词辅助码提醒的生效长度，0为关闭  但同时清空其它，应当使用上面开关来处理
   corrector_type: "{comment}"  # 换一种显示类型，比如"({comment})" 
-  comment_type: fuzhu          # 可以选择注释里显示辅助码或者是声调全拼：fuzhu , tone
-__include: octagram            #启用语言模型
+  fuzhu_type: fuzhu            # 分包这是一个固定搭配，声调可以使用开关控制，这里无需修改
+__include: octagram            #启用语法模型
 #__include: set_chord_composer  #启用并击处理，不懂得不要开启就是了
 ########################以下是方案配置######################################################
 
@@ -25,13 +23,11 @@ schema:
   description: |
     万象拼音 支持常见双拼方案和全拼输入，辅助码同时支持 全拼拼音；墨奇码;鹤形;自然码;简单鹤;仓颉;五笔码首末;五笔前2;汉心码; 采用万象归一的词库，换方案不换词库，不丢失用户词！
   dependencies:
-    - wanxiang_stroke    #笔画反查
-    - wanxiang_radical   #部件拆字，反查及辅码
+    - wanxiang_reverse    # 部件拆字，反查及辅码
     - wanxiang_lookup    #辅助码拆分注释、翻译注释、行政区划匹配、车牌、等等注释类显示滤镜，Lua专用：super_comment
-    - wanxiang_en        #英文输入
-    - wanxiang_cnanden   #中英文混合词汇
+    - wanxiang_charset    #字符集过滤器
+    - wanxiang_mixedcode  #中英文混合词汇
     - wubi_lookup 
-    - wubi
     - wubici
 
 # 开关
@@ -119,16 +115,16 @@ engine:
     - predict_translator                   #预测候选的生成器
     - punct_translator                     #配合 punct_segmentor 转换标点符号
     - script_translator                    #脚本翻译器，用于拼音、粤拼等基于音节表的输入方案
+    - lua_translator@*set_schema           #输入'/zrm'，快速切换为自然码双拼， /flypy→小鹤双拼 /mspy→微软双拼 /zrm→自然码 /sogou→搜狗双拼 /abc→智能ABC /ziguang→紫光双拼 /pyjj→拼音加加 /gbpy→国标双拼 /lxsq→乱序17 /pinyin→全拼
     - lua_translator@*shijian              #农历、日期、节气、节日、时间、周、问候模板等等，触发清单看下文
     - lua_translator@*unicode              #通过输入大写U引导，并输入Unicode编码获得汉字输出
     - lua_translator@*number_translator    #数字、金额大写，通过输入大写R1234获得候选输出
     - lua_translator@*super_calculator     #超级计算器，Lua内查看高级用法
     - lua_translator@*new_statistics      #一个输入统计的脚本，以日、周、月、年、临时等维度的统计
-    - table_translator@wanxiang_en         #挂接英文输入，参与中英混输
-    - table_translator@wanxiang_cnanden    #中英混合词汇表导入
+    - lua_translator@*wj
+    - table_translator@wanxiang_mixedcode  #中英等混合词汇表导入
     - table_translator@chengyu             #简码成语词汇表导入
-    - table_translator@radical_lookup      #挂接部件拆字反查
-    - table_translator@reverse_stroke      #挂接笔画反查
+    - table_translator@wanxiang_reverse    #挂接部件组字和笔画反查
     - script_translator@user_dict_set      #自造词之使用词汇入口
     - script_translator@add_user_dict      #自造词之制造词汇入口
     - lua_translator@*force_gc             #暴力 GC 降低内存
@@ -220,25 +216,23 @@ chengyu:
   enable_completion: false
   initial_quality: 1.2 #本表词和系统词重码居后
 
-# 次翻译器，英文
-wanxiang_en:
-  dictionary: wanxiang_en     # 挂载词库 wanxiang_en.dict.yaml
-  enable_sentence: false   # 禁止造句
-  enable_user_dict: false  # 禁用用户词典，是否开启自动调频
-  initial_quality: 1.1     # 初始权重
-  comment_format:          # 自定义提示码
-    - xform/.*//           # 清空提示码
-
-
-# 中英混合词汇
-wanxiang_cnanden:
-  dictionary: wanxiang_cnanden
+# 中文、英文、数字、符号等混合词汇
+wanxiang_mixedcode:
+  dictionary: wanxiang_mixedcode
   db_class: stabledb
   enable_completion: true
   enable_sentence: false
   initial_quality: 0.5
   comment_format:
     - xform/^.+$//
+
+#中文转英文
+chinese_english:
+  option_name: chinese_english
+  opencc_config: chinese_english.json
+  tips: char
+  comment_format:
+    - "xform/-/ /"
 
 # Emoji
 emoji:
@@ -272,31 +266,19 @@ s2tw:
   tags: [abc]
 
 # 部件拆字反查
-radical_lookup:
-  tag: radical_lookup
-  dictionary: wanxiang_radical
+wanxiang_reverse:
+  tag: wanxiang_reverse
+  dictionary: wanxiang_reverse
+  db_class: stabledb
   enable_user_dict: false
   prefix: "`"  # 反查前缀（反查时前缀会消失影响打英文所以设定为两个字母，或可改成一个非字母符号），与 recognizer/patterns/radical_lookup 匹配
   tips: "〔反查：部件|笔画〕"
-  extra_tags:
-    - reverse_stroke
-
-reverse_stroke:
-  tag: reverse_stroke
-  dictionary: wanxiang_stroke
-  db_class: stabledb
-  enable_completion: true
-  suffix: "'"
-  preedit_format:
-    - xlit/hspnz/一丨丿丶乙/
-
 
 # 部件拆字滤镜
 radical_reverse_lookup:
-  tags: [ radical_lookup,reverse_stroke ]
-  overwrite_comment: true
-  dictionary: wanxiang_pro #带音调的词典
-
+  tags: [ wanxiang_reverse ]  #起作用tag范围
+  overwrite_comment: true   #是否覆盖其他提示
+  dictionary: wanxiang_pro      #带音调的词典
 
 # 处理符合特定规则的输入码，如网址、反查
 recognizer:
@@ -309,6 +291,7 @@ recognizer:
     number: "^R[0-9]+[.]?[0-9]*"        # 脚本将自动获取第 2 个字符 R 作为触发前缀，响应 lua_translator@number_translator，数字金额大写
     gregorian_to_lunar: "^N[0-9]{1,8}"  # 脚本将自动获取第 2 个字符 N 作为触发前缀，响应 lua_translator@lunar，公历转农历，输入 N20240115 得到「二〇二三年腊月初五」
     calculator: "^V.*$"                 # 计算器功能引导
+    wj: "^Z.*$"
 
 # 标点符号
 # punctuator 下面有三个子项：

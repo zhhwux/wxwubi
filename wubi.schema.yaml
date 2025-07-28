@@ -6,11 +6,11 @@ schema:
   schema_id: wubi
   name: 万象五笔
   dependencies:
-    - wanxiang_en        #英文输入
-    - wanxiang_radical  
-    - wanxiang_pro
+    - wanxiang_mixedcode  #中英文混合词汇
+    - wanxiang_charset    #字符集过滤器
     - wubi_lookup 
     - wubici
+
 
 switches:
   - name: english_word   #中英单词
@@ -89,13 +89,14 @@ engine:
     - predict_translator                   #预测候选的生成器
     - punct_translator                     #配合 punct_segmentor 转换标点符号
     - script_translator                    #脚本翻译器，用于拼音、粤拼等基于音节表的输入方案
+    - lua_translator@*set_schema           #输入'/zrm'，快速切换为自然码双拼， /flypy→小鹤双拼 /mspy→微软双拼 /zrm→自然码 /sogou→搜狗双拼 /abc→智能ABC /ziguang→紫光双拼 /pyjj→拼音加加 /gbpy→国标双拼 /lxsq→乱序17 /pinyin→全拼
     - lua_translator@*shijian              #农历、日期、节气、节日、时间、周、问候模板等等，触发清单看下文
     - lua_translator@*unicode              #通过输入大写U引导，并输入Unicode编码获得汉字输出
     - lua_translator@*number_translator    #数字、金额大写，通过输入大写R1234获得候选输出
     - lua_translator@*super_calculator     #超级计算器，Lua内查看高级用法
     - lua_translator@*new_statistics      #一个输入统计的脚本，以日、周、月、年、临时等维度的统计
-    - table_translator@wanxiang_en         #挂接英文输入，参与中英混输
-    - table_translator@wanxiang_cnanden    #中英混合词汇表导入
+    - lua_translator@*wj
+    - table_translator@wanxiang_mixedcode  #中英等混合词汇表导入
     - script_translator@wubi_user_dict   #五笔码自造词之使用词汇入口
     - script_translator@wubi_add_user    #五笔码自造词之制造词汇入口
     - script_translator@user_dict_set      #音码自造词之使用词汇入口
@@ -224,26 +225,15 @@ add_user_dict:
   prefix: "'"
   tips: "〔音〕"
     
-# 次翻译器，英文
-wanxiang_en:
-  dictionary: wanxiang_en     # 挂载词库 wanxiang_en.dict.yaml
-  enable_sentence: false   # 禁止造句
-  enable_user_dict: false  # 禁用用户词典，是否开启自动调频
-  initial_quality: 1.1     # 初始权重
-  comment_format:          # 自定义提示码
-    - xform/.*//           # 清空提示码
-
-
-# 中英混合词汇
-wanxiang_cnanden:
-  dictionary: wanxiang_cnanden
+# 中文、英文、数字、符号等混合词汇
+wanxiang_mixedcode:
+  dictionary: wanxiang_mixedcode
   db_class: stabledb
   enable_completion: true
   enable_sentence: false
   initial_quality: 0.5
   comment_format:
     - xform/^.+$//
-    
 
 #中文转英文
 chinese_english:
@@ -280,7 +270,8 @@ recognizer:
     number: "^R[0-9]+[.]?[0-9]*"        # 脚本将自动获取第 2 个字符 R 作为触发前缀，响应 lua_translator@number_translator，数字金额大写
     gregorian_to_lunar: "^N[0-9]{1,8}"  # 脚本将自动获取第 2 个字符 N 作为触发前缀，响应 lua_translator@lunar，公历转农历，输入 N20240115 得到「二〇二三年腊月初五」
     calculator: "^V.*$"                 # 计算器功能引导          
-
+    wj: "^Z.*$"   
+    
 # 标点符号
 # punctuator 下面有三个子项：
 # 设置为一个映射，就自动上屏；设置为多个映射，如 '/' : [ '/', ÷ ] 则进行复选。
