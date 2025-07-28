@@ -42,7 +42,7 @@ local function trim_trailing_invalid_chars(text)
     return utf8_sub(text, 1, last_valid_index)
 end
 
--- 加载永久自造词表
+-- 加载永久自造词表（支持新旧格式兼容）
 function load_permanent_user_words()
     local base_dir = get_user_data_dir()
     -- iOS使用独立文件名，其他平台保留路径结构
@@ -50,7 +50,42 @@ function load_permanent_user_words()
     
     local f, err = loadfile(filename)
     if f then
-        return f() or {}
+        local loaded = f() or {}
+        local converted = {}
+        local need_update = false
+        
+        -- 检查并转换旧格式
+        for word, data in pairs(loaded) do
+            if type(data) == "string" then
+                -- 旧格式转换：添加时间戳0
+                converted[word] = {code = data, time = 0}
+                need_update = true
+            else
+                -- 新格式直接使用
+                converted[word] = data
+            end
+        end
+        
+        -- 需要更新文件格式
+        if need_update then
+            local serialize_str = ""
+            for w, d in pairs(converted) do
+                serialize_str = serialize_str .. string.format('    ["%s"] = {code = "%s", time = %d},\n', w, d.code, d.time)
+            end
+            
+            local record = "local user_words = {\n" .. serialize_str .. "}\nreturn user_words"
+            local fd = io.open(filename, "w")
+            if fd then
+                fd:setvbuf("line")
+                fd:write(record)
+                fd:close()
+                log.info("[tiger_user_words] Converted old format to new format.")
+            else
+                log.error("[tiger_user_words] Failed to update file to new format.")
+            end
+        end
+        
+        return converted
     else
         -- 文件不存在时创建初始空文件
         local record = "local user_words = {\n}\nreturn user_words"
@@ -67,15 +102,20 @@ function load_permanent_user_words()
     end
 end
 
--- 反转词表：{词 => 码} 转换为 {码 => [词1, 词2]}
+-- 反转词表：{词 => 码} 转换为 {码 => [{word=词, time=时间}]}
 function reverse_seq_words(user_words)
     local new_dict = {}
-    for word, code in pairs(user_words) do
+    for word, data in pairs(user_words) do
+        -- 兼容文件简词和永久简词两种数据结构
+        local code = (type(data) == "string") and data or data.code
+        
         if not new_dict[code] then
-            new_dict[code] = {word}
-        else
-            table.insert(new_dict[code], word)
+            new_dict[code] = {}
         end
+        
+        -- 文件简词无时间戳，使用0代替
+        local timestamp = (type(data) == "table") and data.time or 0
+        table.insert(new_dict[code], {word = word, time = timestamp})
     end
     return new_dict
 end
@@ -87,38 +127,8 @@ function utf8_sub(str, start_char, end_char)
     return string.sub(str, start_byte, end_byte - 1)
 end
 
--- 生成虎码编码（过滤非编码表字符）
+-- 统一编码生成函数（支持2字及以上词语）
 function get_tiger_code(word)
-    local valid_chars = {}  -- 存储有效汉字（在编码表中的字符）
-    local len = utf8.len(word)
-    
-    -- 收集有效汉字
-    for i = 1, len do
-        local char = utf8_sub(word, i, i)
-        if code_table[char] then
-            table.insert(valid_chars, char)
-        end
-    end
-    
-    local valid_count = #valid_chars
-    if valid_count < 3 then return "" end  -- 只处理3字及以上词语
-    
-    if valid_count == 3 then
-        local code1 = code_table[valid_chars[1]] or ""
-        local code2 = code_table[valid_chars[2]] or ""
-        local code3 = code_table[valid_chars[3]] or ""
-        return string.sub(code1, 1, 1) .. string.sub(code2, 1, 1) .. string.sub(code3, 1, 2)
-    else
-        local code1 = code_table[valid_chars[1]] or ""
-        local code2 = code_table[valid_chars[2]] or ""
-        local code3 = code_table[valid_chars[3]] or ""
-        local code_last = code_table[valid_chars[valid_count]] or ""
-        return string.sub(code1, 1, 1) .. string.sub(code2, 1, 1) .. string.sub(code3, 1, 1) .. string.sub(code_last, 1, 1)
-    end
-end
-
--- 文件简词专用编码生成（支持2字词）
-local function get_file_tiger_code(word)
     local valid_chars = {}  -- 存储有效汉字（在编码表中的字符）
     local len = utf8.len(word)
     
@@ -136,8 +146,14 @@ local function get_file_tiger_code(word)
         local code1 = code_table[valid_chars[1]] or ""
         local code2 = code_table[valid_chars[2]] or ""
         return string.sub(code1, 1, 2) .. string.sub(code2, 1, 2)
-    -- 3字及以上使用原规则
-    elseif valid_count >= 3 then
+    -- 3字词：取第1字首码、第2字首码、第3字前两码（共4码）
+    elseif valid_count == 3 then
+        local code1 = code_table[valid_chars[1]] or ""
+        local code2 = code_table[valid_chars[2]] or ""
+        local code3 = code_table[valid_chars[3]] or ""
+        return string.sub(code1, 1, 1) .. string.sub(code2, 1, 1) .. string.sub(code3, 1, 2)
+    -- 4字及以上：取第1字首码、第2字首码、第3字首码、最后一字首码（共4码）
+    elseif valid_count >= 4 then
         local code1 = code_table[valid_chars[1]] or ""
         local code2 = code_table[valid_chars[2]] or ""
         local code3 = code_table[valid_chars[3]] or ""
@@ -148,18 +164,19 @@ local function get_file_tiger_code(word)
     end
 end
 
--- 写入永久自造词到文件
-function write_permanent_word_to_file(env, word, code)
-    -- 添加到内存表
-    env.permanent_user_words[word] = code
+-- 写入永久自造词到文件（增强版：支持时间戳更新）
+function write_permanent_word_to_file(env, word, code, timestamp)
+    -- 添加/更新内存表（支持自定义时间戳）
+    local new_time = timestamp or os.time()
+    env.permanent_user_words[word] = {code = code, time = new_time}
     
     -- 序列化并写入文件
     local base_dir = get_user_data_dir()
     local filename = base_dir .. (is_ios_device() and "rime_user_words.lua" or "lua/user_words.lua")
     
     local serialize_str = ""
-    for w, c in pairs(env.permanent_user_words) do
-        serialize_str = serialize_str .. string.format('    ["%s"] = "%s",\n', w, c)
+    for w, d in pairs(env.permanent_user_words) do
+        serialize_str = serialize_str .. string.format('    ["%s"] = {code = "%s", time = %d},\n', w, d.code, d.time)
     end
     
     local record = "local user_words = {\n" .. serialize_str .. "}\nreturn user_words"
@@ -168,6 +185,9 @@ function write_permanent_word_to_file(env, word, code)
         fd:setvbuf("line")
         fd:write(record)
         fd:close()
+        log.info("[永久简词] 已更新词条: "..word.." (时间戳:"..new_time..")")
+    else
+        log.error("[永久简词] 文件写入失败: "..filename)
     end
     
     -- 更新反转表
@@ -244,10 +264,15 @@ local function import_from_non_ios_path(env)
     
     -- 增量合并：保留原有词表，添加新词条
     local merged_count = 0
-    for word, code in pairs(non_ios_words) do
+    for word, data in pairs(non_ios_words) do
         -- 只添加不存在于当前词表的新词
         if not ios_words[word] then
-            ios_words[word] = code
+            -- 兼容旧格式数据
+            if type(data) == "string" then
+                ios_words[word] = {code = data, time = 0}  -- 旧格式转换
+            else
+                ios_words[word] = data
+            end
             merged_count = merged_count + 1
         end
     end
@@ -267,8 +292,12 @@ local function import_from_non_ios_path(env)
     
     -- 序列化合并后的词表
     local serialize_str = ""
-    for w, c in pairs(ios_words) do
-        serialize_str = serialize_str .. string.format('    ["%s"] = "%s",\n', w, c)
+    for w, d in pairs(ios_words) do
+        if type(d) == "string" then
+            serialize_str = serialize_str .. string.format('    ["%s"] = "%s",\n', w, d)
+        else
+            serialize_str = serialize_str .. string.format('    ["%s"] = {code = "%s", time = %d},\n', w, d.code, d.time)
+        end
     end
     
     local record = "local user_words = {\n" .. serialize_str .. "}\nreturn user_words"
@@ -322,6 +351,7 @@ local function export_to_non_ios_path()
     return true
 end
 
+-- 文件简词相关功能主要用于编码生成和词条中转，而不负责生成候选词。
 -- 文件简词加载功能（初始化+指令触发）
 local function load_file_shortcuts()
     -- 获取文件路径
@@ -333,10 +363,10 @@ local function load_file_shortcuts()
     file_seq_words_dict = {}
     
     -- 检查文件是否存在
-    local f = io.open(file_path, "r")
+    local f, err = io.open(file_path, "r")
     if not f then
-        log.warning("[文件简词] 文件不存在: " .. file_path)
-        return false, "文件不存在"
+        log.warning("[文件简词] 文件不存在: " .. file_path .. " 错误: " .. (err or "未知"))
+        return false, "文件不存在: " .. file_path
     end
     
     local lines = {}
@@ -368,7 +398,7 @@ local function load_file_shortcuts()
             
             -- 情况1: 行首+文字+制表符+行末 (生成编码)
             if rest == "" then
-                code = get_file_tiger_code(word)
+                code = get_tiger_code(word)
                 if code ~= "" then
                     file_user_words[word] = code
                     lines[i] = word .. "\t" .. code
@@ -390,7 +420,7 @@ local function load_file_shortcuts()
                 
             -- 情况4: 文字+制表符+非字母内容 (生成编码插入)
             elseif string.match(rest, "[^%a]") then
-                code = get_file_tiger_code(word)
+                code = get_tiger_code(word)
                 if code ~= "" then
                     file_user_words[word] = code
                     lines[i] = word .. "\t" .. code .. "\t" .. rest
@@ -412,7 +442,7 @@ local function load_file_shortcuts()
         else
             -- 没有制表符的情况 (行首+文字+行末)
             word = line
-            code = get_file_tiger_code(word)
+            code = get_tiger_code(word)
             if code ~= "" then
                 file_user_words[word] = code
                 lines[i] = word .. "\t" .. code
@@ -427,10 +457,10 @@ local function load_file_shortcuts()
     end
     
     -- 更新文件（添加/修改编码）
-    local fd = io.open(file_path, "w")
+    local fd, err = io.open(file_path, "w")
     if not fd then
-        log.warning("[文件简词] 无法写入文件: " .. file_path)
-        return false, "写入失败"
+        log.warning("[文件简词] 无法写入文件: " .. file_path .. " 错误: " .. (err or "未知"))
+        return false, "写入失败: " .. (err or "未知")
     end
     
     for _, line in ipairs(lines) do
@@ -438,21 +468,46 @@ local function load_file_shortcuts()
     end
     fd:close()
     
-    -- 构建反转表
-    file_seq_words_dict = reverse_seq_words(file_user_words)
+    -- 手动构建文件简词反转表（兼容简单结构）
+    file_seq_words_dict = {}
+    for word, code in pairs(file_user_words) do
+        if not file_seq_words_dict[code] then
+            file_seq_words_dict[code] = {}
+        end
+        table.insert(file_seq_words_dict[code], word)
+    end
     
     log.info(string.format(
-        "[文件简词] 导入完成: 处理%d词条 (生成%d编码, 保留%d编码), 跳过%d无效行",
+        "[文件简词] 编码生成完成: 处理%d词条 (生成%d编码, 保留%d编码), 跳过%d无效行",
         processed_count, generated_count, processed_count - generated_count, skipped_count
     ))
     
     return true, string.format(
-        "※ 文件简词导入: %d词条生效 (%d新生成, %d原编码), %d无效行",
+        "※ 文件简词编码生成: %d词条生效 (%d新生成, %d原编码), %d无效行",
         processed_count, generated_count, processed_count - generated_count, skipped_count
     )
 end
 
--- 历史记录管理核心函数（重构为env方法）
+-- 清理文件简词
+local function clear_file_shortcuts(env)
+    -- 清空内存数据
+    file_user_words = {}
+    file_seq_words_dict = {}
+    
+    -- 删除物理文件
+    local file_path = rime_api.get_user_data_dir() .. "/custom_phrase/user.txt"
+    local fd, err = io.open(file_path, "w")
+    if fd then
+        fd:close()
+        log.info("[文件简词清理] 文件已清空: " .. file_path)
+        return true, "※ 文件简词已清空（内存+文件）"
+    else
+        log.error("[文件简词清理] 文件操作失败: " .. file_path .. " 错误: " .. (err or "未知"))
+        return false, "※ 清理失败：无法写入文件"
+    end
+end
+
+-- 历史记录管理核心函数（关键修改：永久词时间戳实时更新）
 local function make_update_history(env)
     return function(commit_text)
         -- 去除临时简词末尾的无效符号
@@ -461,7 +516,7 @@ local function make_update_history(env)
         
         -- 直接生成编码（内部会过滤非编码表字符）
         local code = get_tiger_code(commit_text)
-        if code == "" then return end
+        if code == "" then return end  -- 二字词在此被过滤
 
         -- 获取当前输入编码及其长度
         local context = env.engine.context
@@ -484,12 +539,16 @@ local function make_update_history(env)
         local is_shortcut = (input_len == 4)  -- 简码输入标识
 
         -- 永久化逻辑（在历史记录更新前）
-        if is_repeated and is_shortcut then
-            if not env.permanent_user_words[commit_text] then
+        if is_shortcut and (is_repeated or env.permanent_user_words[commit_text]) then
+            -- 存在则更新时间戳，不存在则新建
+            if env.permanent_user_words[commit_text] then
+                -- 更新时间戳并写入文件（使用当前时间）
+                write_permanent_word_to_file(env, commit_text, code)
+            else
                 write_permanent_word_to_file(env, commit_text, code)
             end
         end
-
+        
         -- 删除已有记录
         if global_commit_dict[commit_text] then
             local old_code = global_commit_dict[commit_text]
@@ -622,23 +681,50 @@ function F.func(input, env)
         return
     end
     
-    -- 处理文件简词导入指令/wjjc
+    -- 处理文件简词编码生成指令/wjjc
     if input_code == "/wjjc" then
         local success, msg = load_file_shortcuts()
         if success then
             yield(Candidate("file_shortcut", 0, #input_code, msg, ""))
         else
-            yield(Candidate("file_shortcut", 0, #input_code, "※ 文件简词导入失败: " .. msg, ""))
+            yield(Candidate("file_shortcut", 0, #input_code, "※ 文件简词编码生成失败: " .. (msg or "未知错误"), ""))
         end
         return
     end
-    
+  
+    -- 新增指令 /wjql
+    if input_code == "/wjql" then
+        local success, msg = clear_file_shortcuts(env)
+        yield(Candidate("clear_file", 0, #input_code, msg, ""))
+        return
+    end
+   
     -- 新增指令：文件简词转永久简词 /zyj
     if input_code == "/zyj" then
+        -- 先执行/wjjc指令确保文件简词已加载
+        local success, msg = load_file_shortcuts()
+        if not success then
+            yield(Candidate("file_to_permanent", 0, #input_code, 
+                "※ 转换失败: " .. (msg or "文件简词加载失败"), ""))
+            return
+        end
+        
         local added_count = 0
+        local current_time = os.time()
+        
         for word, code in pairs(file_user_words) do
-            if not env.permanent_user_words[word] then
-                env.permanent_user_words[word] = code
+            -- 检查词条是否已存在（兼容新旧数据结构）
+            local exists = false
+            if env.permanent_user_words[word] then
+                if type(env.permanent_user_words[word]) == "table" then
+                    exists = true
+                elseif type(env.permanent_user_words[word]) == "string" then
+                    exists = (env.permanent_user_words[word] == code)
+                end
+            end
+            
+            if not exists then
+                env.permanent_user_words[word] = {code = code, time = current_time}
                 added_count = added_count + 1
             end
         end
@@ -648,8 +734,13 @@ function F.func(input, env)
         local filename = base_dir .. (is_ios_device() and "rime_user_words.lua" or "lua/user_words.lua")
         
         local serialize_str = ""
-        for w, c in pairs(env.permanent_user_words) do
-            serialize_str = serialize_str .. string.format('    ["%s"] = "%s",\n', w, c)
+        for w, d in pairs(env.permanent_user_words) do
+            if type(d) == "table" then
+                serialize_str = serialize_str .. string.format('    ["%s"] = {code = "%s", time = %d},\n', w, d.code, d.time)
+            else
+                -- 兼容旧格式转换
+                serialize_str = serialize_str .. string.format('    ["%s"] = {code = "%s", time = %d},\n', w, d, current_time)
+            end
         end
         
         local record = "local user_words = {\n" .. serialize_str .. "}\nreturn user_words"
@@ -658,31 +749,40 @@ function F.func(input, env)
             fd:setvbuf("line")
             fd:write(record)
             fd:close()
+            -- 更新反转表
+            env.permanent_seq_words_dict = reverse_seq_words(env.permanent_user_words)
+            yield(Candidate("file_to_permanent", 0, #input_code, 
+                string.format("※ 已添加%d个文件简词到永久简词", added_count), ""))
+        else
+            yield(Candidate("file_to_permanent", 0, #input_code, 
+                "※ 转换失败：永久词表文件写入错误", ""))
         end
-        
-        -- 更新反转表
-        env.permanent_seq_words_dict = reverse_seq_words(env.permanent_user_words)
-        
-        yield(Candidate("file_to_permanent", 0, #input_code, 
-            string.format("※ 已添加%d个文件简词到永久简词", added_count), ""))
         return
     end
-    
+
     -- 新增指令：永久简词转文件简词 /zwj
     if input_code == "/zwj" then
-     env.permanent_user_words = load_permanent_user_words()
-     env.permanent_seq_words_dict = reverse_seq_words(env.permanent_user_words)
+        env.permanent_user_words = load_permanent_user_words()
+        env.permanent_seq_words_dict = reverse_seq_words(env.permanent_user_words)
+
         local file_path = rime_api.get_user_data_dir() .. "/custom_phrase/user.txt"
-        local fd = io.open(file_path, "a")  -- 追加模式
+        local fd, err = io.open(file_path, "a")  -- 追加模式
         if not fd then
-            yield(Candidate("permanent_to_file", 0, #input_code, "※ 打开文件失败: " .. file_path, ""))
+            yield(Candidate("permanent_to_file", 0, #input_code, 
+                "※ 打开文件失败: " .. file_path .. " 错误: " .. (err or "未知"), ""))
             return
         end
         
         local added_count = 0
-        for word, code in pairs(env.permanent_user_words) do
+        for word, data in pairs(env.permanent_user_words) do
+            -- 统一获取编码
+            local code = (type(data) == "table") and data.code or data
+            
+            -- 检查是否已存在
             if not file_user_words[word] then
+                -- 写入文件
                 fd:write(word .. "\t" .. code .. "\n")
+                -- 更新内存
                 file_user_words[word] = code
                 if not file_seq_words_dict[code] then
                     file_seq_words_dict[code] = {}
@@ -723,17 +823,9 @@ function F.func(input, env)
     local cand_start = start_pos or 0
     local cand_end = end_pos or input_len
 
-    -- 合并永久词与临时词（移除文件简词部分）
+    -- 合并临时词与永久词（临时词在前，永久词在后）
     local combined_words = {}
     local combined_count = 0
-    
-    -- 永久词（标记为⭐）
-    if env.permanent_seq_words_dict[input_code] then
-        for _, word in ipairs(env.permanent_seq_words_dict[input_code]) do
-            combined_count = combined_count + 1
-            combined_words[combined_count] = {text = word, type = "permanent"}
-        end
-    end
     
     -- 临时词（标记为*）
     if global_seq_words_dict[input_code] then
@@ -743,8 +835,30 @@ function F.func(input, env)
             combined_words[combined_count] = {text = word, type = "history"}
         end
     end
+    
+    -- 永久词（标记为⭐），按时间戳倒序
+    if env.permanent_seq_words_dict[input_code] then
+        -- 获取永久词列表并按时间戳排序
+        local permanent_list = {}
+        for _, item in ipairs(env.permanent_seq_words_dict[input_code]) do
+            table.insert(permanent_list, {
+                text = item.word, 
+                time = item.time
+            })
+        end
+        
+        -- 按时间戳降序排序（最近使用的在前）
+        table.sort(permanent_list, function(a, b)
+            return a.time > b.time
+        end)
+        
+        for _, item in ipairs(permanent_list) do
+            combined_count = combined_count + 1
+            combined_words[combined_count] = {text = item.text, type = "permanent"}
+        end
+    end
 
-    -- 动态插入候选（关键修复：确保自造简词始终覆盖整个输入编码）
+    -- 动态插入候选（如有其它候选则从次选开始插入，否则从首选开始插入，逻辑复杂勿改）
     if combined_count > 0 then
         if has_original_candidates then
             -- 从第二位开始插入（保留首位原生候选）
@@ -753,18 +867,15 @@ function F.func(input, env)
                 local cand = combined_words[i]
                 local comment = 
                     cand.type == "permanent" and "⭐" or "*"
-                -- 关键修复点：使用完整的输入编码长度作为候选范围
                 local new_cand = Candidate(cand.type, 0, input_len, cand.text, comment)
                 table.insert(new_candidates, insert_position, new_cand)
                 insert_position = insert_position + 1
             end
         else
-            -- 无原生候选时直接填充（关键修复：使用完整的输入编码长度）
             for i = 1, combined_count do
                 local cand = combined_words[i]
                 local comment = 
                     cand.type == "permanent" and "⭐" or "*"
-                -- 关键修复点：使用完整的输入编码长度作为候选范围
                 local new_cand = Candidate(cand.type, 0, input_len, cand.text, comment)
                 table.insert(new_candidates, new_cand)
             end

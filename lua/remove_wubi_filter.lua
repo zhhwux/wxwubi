@@ -138,6 +138,7 @@ function M.func(input, env)
     local fc_candidates = {}     -- 反查候选词
     local qz_candidates = {}     -- 前缀候选词
     local sj_candidates = {}     -- 时间候选词
+    local wj_candidates = {}     -- 文件候选词
     local digit_candidates = {}  -- 包含数字但不包含字母的候选词
     local alnum_candidates = {}  -- 包含字母的候选词
     local punct_candidates = {}  -- 快符候选词
@@ -170,6 +171,8 @@ function M.func(input, env)
         
         if cand_type == "time" or cand_type == "date" or cand_type == "day_summary" or cand_type == "xq" or cand_type == "oww" or cand_type == "ojq" or cand_type == "holiday_summary" or cand_type == "birthday_reminders" then
             table_insert(sj_candidates, cand)
+        elseif cand_type == env.engine.context.input then
+            table_insert(wj_candidates, cand)
         elseif is_prefix_input then
             table_insert(qz_candidates, cand)
         elseif cand_type == "punct" then
@@ -190,9 +193,24 @@ function M.func(input, env)
             table_insert(pinyin_candidates, cand)
         end
     end
+    
+    local before_alnum = {}
+    local now_alnum = {}
+    for _, cand in ipairs(alnum_candidates) do
+       if utf8.len(input_str) < utf8.len(cand.text) and contains_chinese(cand.text) then
+            table_insert(before_alnum, cand)
+       else 
+            table_insert(now_alnum, cand)
+       end
+    end
 
     -- 时间候选词
     for _, cand in ipairs(sj_candidates) do
+        yield(cand)
+    end
+    
+    -- 文件候选词
+    for _, cand in ipairs(wj_candidates) do
         yield(cand)
     end
 
@@ -300,12 +318,6 @@ function M.func(input, env)
             table_insert(otkf, cand)
         end
     end
-
-    if context:get_option("english_word") then
-        for _, cand in ipairs(alnum_candidates) do
-            yield(cand)
-        end
-    else
         
         --  五笔单开关与五笔词开关 (功能逻辑完全不变)
         if not context:get_option("wubi-sentence") and not context:get_option("yin") and not context:get_option("english_word") and not env.is_radical_mode and not is_prefix_input and #sj_candidates == 0 then
@@ -448,10 +460,21 @@ function M.func(input, env)
           yield(cand)
         end
         
+        if context:get_option("english_word") then
+            for _, cand in ipairs(now_alnum) do
+               yield(cand)
+            end
+        end
+        
         --  五笔句开关 (功能逻辑完全不变)
         if context:get_option("wubi-sentence") and not input_preedit:find("`") then
           for _, cand in ipairs(now_sentence) do
             yield(cand)
+          end
+          if context:get_option("english_word") then
+              for _, cand in ipairs(before_alnum) do
+                 yield(cand)
+              end
           end
           if not context:get_option("chinese_english") and not context:get_option("yin") then
               for _, cand in ipairs(short_wubici) do
@@ -465,12 +488,11 @@ function M.func(input, env)
               end
           end
         end
-    end
         
     -- 提前获取第一个候选项
     local first_cand = nil
     local yin_candidates = {}
-    if context:get_option("yin") and not context:get_option("english_word") or input_preedit:find("`") then
+    if context:get_option("yin") or input_preedit:find("`") then
       for _, cand in ipairs(pinyin_candidates) do
           if not first_cand then first_cand = cand end
           table_insert(yin_candidates, cand)
