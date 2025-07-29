@@ -362,13 +362,28 @@ local function load_file_shortcuts()
     file_user_words = {}
     file_seq_words_dict = {}
     
-    -- 检查文件是否存在
+    -- 检查文件是否存在，不存在则创建空文件
     local f, err = io.open(file_path, "r")
     if not f then
-        log.warning("[文件简词] 文件不存在: " .. file_path .. " 错误: " .. (err or "未知"))
-        return false, "文件不存在: " .. file_path
+        -- 文件不存在，创建空文件
+        log.warning("[文件简词] 文件不存在，创建空文件: " .. file_path)
+        local create_fd = io.open(file_path, "w")
+        if create_fd then
+            create_fd:close()
+            log.info("[文件简词] 成功创建空文件: " .. file_path)
+        else
+            log.error("[文件简词] 创建文件失败: " .. file_path .. " 错误: " .. (err or "未知"))
+            return false, "创建文件失败: " .. (err or "未知")
+        end
+        -- 重新尝试打开创建的空文件
+        f, err = io.open(file_path, "r")
+        if not f then
+            log.error("[文件简词] 无法打开创建的文件: " .. file_path .. " 错误: " .. (err or "未知"))
+            return false, "无法打开文件: " .. (err or "未知")
+        end
     end
     
+    -- 读取文件内容并处理（原有逻辑保持不变）
     local lines = {}
     for line in f:lines() do
         table.insert(lines, line)
@@ -379,7 +394,7 @@ local function load_file_shortcuts()
     local generated_count = 0
     local skipped_count = 0
     
-    -- 处理每一行 (根据新规则)
+    -- 处理每一行（原有逻辑保持不变）
     for i, line in ipairs(lines) do
         -- 跳过空行
         if line == "" then
@@ -468,7 +483,7 @@ local function load_file_shortcuts()
     end
     fd:close()
     
-    -- 手动构建文件简词反转表（兼容简单结构）
+    -- 手动构建文件简词反转表
     file_seq_words_dict = {}
     for word, code in pairs(file_user_words) do
         if not file_seq_words_dict[code] then
