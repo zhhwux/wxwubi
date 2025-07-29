@@ -1,4 +1,4 @@
---9.0 功能完整版
+--7.29 Windows适配版
 local T = {}
 
 T.prefix = "Z"
@@ -8,6 +8,9 @@ local regex_api = {  -- 保留开关接口，供未来扩展
     disable = function() regex_enabled = false end,
     is_enabled = function() return regex_enabled end
 }
+
+-- 获取系统路径分隔符
+local path_sep = package.config:sub(1,1)  -- Windows为\, Linux/Mac为/
 
 local function startsWith(str, start)
     return str:sub(1, #start) == start
@@ -43,6 +46,21 @@ local function writeFileContent(path, content)
     return true
 end
 
+-- 安全拼接路径
+local function path_join(...)
+    local parts = {...}
+    local result = ""
+    for i, part in ipairs(parts) do
+        if i > 1 then
+            result = result .. path_sep
+        end
+        -- 移除部分开头可能存在的分隔符，避免重复
+        part = part:gsub("^["..path_sep.."]", "")
+        result = result .. part
+    end
+    return result
+end
+
 -- 获取用户数据目录下的文件列表（带缓存）
 local function get_file_cache(env)
     if not env.file_cache then
@@ -51,7 +69,7 @@ local function get_file_cache(env)
         
         -- 跨平台文件扫描命令
         local cmd
-        if package.config:sub(1,1) == '\\' then  -- Windows
+        if path_sep == '\\' then  -- Windows
             cmd = string.format('dir /b /s /a-d "%s"', user_dir)
         else  -- Linux/Mac
             cmd = string.format('find "%s" -type f', user_dir)
@@ -61,7 +79,8 @@ local function get_file_cache(env)
         if handle then
             for path in handle:lines() do
                 -- 转换为相对于用户数据目录的路径
-                local rel_path = path:gsub(user_dir .. "/", "")
+                -- 使用正确的分隔符替换
+                local rel_path = path:gsub(user_dir .. path_sep, "")
                 table.insert(env.file_cache, rel_path)
             end
             handle:close()
@@ -78,7 +97,7 @@ local function get_dir_cache(env)
         
         -- 跨平台文件夹扫描命令
         local cmd
-        if package.config:sub(1,1) == '\\' then  -- Windows
+        if path_sep == '\\' then  -- Windows
             cmd = string.format('dir /b /s /ad "%s"', user_dir)
         else  -- Linux/Mac
             cmd = string.format('find "%s" -type d', user_dir)
@@ -88,7 +107,7 @@ local function get_dir_cache(env)
         if handle then
             for path in handle:lines() do
                 -- 转换为相对于用户数据目录的路径
-                local rel_path = path:gsub(user_dir .. "/", "")
+                local rel_path = path:gsub(user_dir .. path_sep, "")
                 table.insert(env.dir_cache, rel_path)
             end
             handle:close()
@@ -125,7 +144,7 @@ end
 local function ensure_directory_exists(full_dir_path)
     -- 检查目录是否已存在
     local cmd_check
-    if package.config:sub(1,1) == '\\' then  -- Windows
+    if path_sep == '\\' then  -- Windows
         cmd_check = string.format('if not exist "%s" mkdir "%s"', full_dir_path, full_dir_path)
     else  -- Linux/Mac
         cmd_check = string.format('mkdir -p "%s"', full_dir_path)
@@ -275,8 +294,8 @@ local function handleFileSystemRequest(input, seg, env)
     local is_create = create_path ~= nil
     local target_path = create_path or delete_path
     
-    -- 检查是否是文件夹操作（以/结尾）
-    local is_directory = target_path:sub(-1) == "/"
+    -- 检查是否是文件夹操作（以/或\结尾）
+    local is_directory = target_path:sub(-1) == "/" or target_path:sub(-1) == "\\"
     
     -- 提取选择索引
     local selection_index = nil
@@ -290,7 +309,7 @@ local function handleFileSystemRequest(input, seg, env)
         end
     end
     
-    -- 如果提取到了数字且路径部分不为空，才视为选择索引
+    -- 如果提取到了数字且关键词部分不为空，才视为选择索引
     if #index_str > 0 and #target_path > #index_str then
         selection_index = tonumber(index_str)
         target_path = target_path:sub(1, #target_path - #index_str)
@@ -316,11 +335,11 @@ local function handleFileSystemRequest(input, seg, env)
             -- 如果没有匹配项，直接创建新文件夹
             if #matches == 0 then
                 local user_dir = rime_api.get_user_data_dir()
-                local full_path = user_dir .. "/" .. target_path
+                local full_path = path_join(user_dir, target_path)
                 
                 -- 创建文件夹
                 local cmd
-                if package.config:sub(1,1) == '\\' then  -- Windows
+                if path_sep == '\\' then  -- Windows
                     cmd = string.format('mkdir "%s"', full_path)
                 else  -- Linux/Mac
                     cmd = string.format('mkdir -p "%s"', full_path)
@@ -352,10 +371,10 @@ local function handleFileSystemRequest(input, seg, env)
         else
             -- 创建文件
             -- 检查并创建父目录
-            local dir_path = target_path:match("^(.*)/[^/]*$")
+            local dir_path = target_path:match("^(.*)[/\\][^/\\]*$")
             if dir_path then
                 local user_dir = rime_api.get_user_data_dir()
-                local full_dir_path = user_dir .. "/" .. dir_path
+                local full_dir_path = path_join(user_dir, dir_path)
                 if not ensure_directory_exists(full_dir_path) then
                     yield(Candidate(input, seg.start, seg._end, "父目录创建失败: "..dir_path, ""))
                     return true
@@ -365,7 +384,7 @@ local function handleFileSystemRequest(input, seg, env)
             -- 如果没有匹配项，直接创建新文件
             if #matches == 0 then
                 local user_dir = rime_api.get_user_data_dir()
-                local full_path = user_dir .. "/" .. target_path
+                local full_path = path_join(user_dir, target_path)
                 
                 -- 创建文件
                 local file = io.open(full_path, "w")
@@ -408,11 +427,11 @@ local function handleFileSystemRequest(input, seg, env)
                 return true
             else
                 local user_dir = rime_api.get_user_data_dir()
-                local full_path = user_dir .. "/" .. matches[1]
+                local full_path = path_join(user_dir, matches[1])
                 
                 -- 删除文件夹
                 local cmd
-                if package.config:sub(1,1) == '\\' then  -- Windows
+                if path_sep == '\\' then  -- Windows
                     cmd = string.format('rmdir /s /q "%s"', full_path)
                 else  -- Linux/Mac
                     cmd = string.format('rm -rf "%s"', full_path)
@@ -443,7 +462,7 @@ local function handleFileSystemRequest(input, seg, env)
                 return true
             else
                 local user_dir = rime_api.get_user_data_dir()
-                local full_path = user_dir .. "/" .. matches[1]
+                local full_path = path_join(user_dir, matches[1])
                 
                 -- 删除文件
                 local success, err = os.remove(full_path)
@@ -514,12 +533,10 @@ local function handleReplaceRequest(input, seg, env)
         
         local resolved_path = fuzzy_matches[1]
         local user_dir = rime_api.get_user_data_dir()
-        local full_path = user_dir .. "/" .. resolved_path
+        local full_path = path_join(user_dir, resolved_path)
         
         -- 读取文件内容以便显示原内容（预览用）
         local content, _ = readFileContent(full_path)
-        
-        -- 不再检查文件是否为空，任何文件都可以使用此模式
         
         -- 如果还未输入结束的/，显示预览
         if not input:match(overwrite_pattern) then
@@ -666,7 +683,7 @@ local function handleReplaceRequest(input, seg, env)
     
     local resolved_path = fuzzy_matches[1]
     local user_dir = rime_api.get_user_data_dir()
-    local full_path = user_dir .. "/" .. resolved_path
+    local full_path = path_join(user_dir, resolved_path)
     
     -- 读取文件内容
     local content, err = readFileContent(full_path)
@@ -871,12 +888,12 @@ local function handleFileRequest(input, seg, env)
     
     -- 如果有唯一模糊匹配结果，使用该结果作为实际文件路径
     local resolved_path = actual_file_path
-    if #fuzzy_matches == 1 then
+if #fuzzy_matches == 1 then
         resolved_path = fuzzy_matches[1]
     end
 
     -- 分割路径和文件名
-    local dir, filename = resolved_path:match("^(.*)/([^/]+)$")
+    local dir, filename = resolved_path:match("^(.*)[/\\]([^/\\]+)$")
     if not dir then
         dir = ""
         filename = resolved_path
@@ -884,13 +901,13 @@ local function handleFileRequest(input, seg, env)
 
     -- 获取完整路径
     local user_dir = rime_api.get_user_data_dir()
-    local full_path = user_dir .. "/" .. resolved_path
+    local full_path = path_join(user_dir, resolved_path)
 
     -- 读取文件
     local content, err = readFileContent(full_path)
     if not content then
         -- 如果模糊匹配失败，尝试直接使用原始路径
-        full_path = user_dir .. "/" .. dir .. "/" .. filename
+        full_path = path_join(user_dir, dir, filename)
         content, err = readFileContent(full_path)
         if not content then
             yield(Candidate(input, seg.start, seg._end, "文件读取错误：" .. err, ""))
@@ -1037,7 +1054,7 @@ local function handleFileCopyMove(input, seg, env)
         end
         
         local resolved_src = src_matches[1]
-        local full_src_path = user_dir .. "/" .. resolved_src
+        local full_src_path = path_join(user_dir, resolved_src)
         
         -- 提取目标目录索引（支持数字选重）
         local target_selection_index = nil
@@ -1076,7 +1093,7 @@ local function handleFileCopyMove(input, seg, env)
         end
         
         -- 解析源文件的文件名
-        local src_filename = resolved_src:match("[^/]+$") or resolved_src
+        local src_filename = resolved_src:match("[^/\\]+$") or resolved_src
         
         -- 确定最终目标路径和目录
         local full_target_path, target_dir
@@ -1084,18 +1101,18 @@ local function handleFileCopyMove(input, seg, env)
         
         -- 情况1：有有效数字选重，使用现有目录
         if #target_matches == 1 then
-            full_target_path = user_dir .. "/" .. target_matches[1] .. "/" .. src_filename
-            target_dir = user_dir .. "/" .. target_matches[1]
+            full_target_path = path_join(user_dir, target_matches[1], src_filename)
+            target_dir = path_join(user_dir, target_matches[1])
         -- 情况2：无数字选重，使用输入路径并创建目录
         else
             is_new_directory = true
             -- 处理目标路径格式（确保正确拼接）
-            local full_target_dir = user_dir .. "/" .. target_term
-            -- 确保目录以/结尾
-            if full_target_dir:sub(-1) ~= "/" then
-                full_target_dir = full_target_dir .. "/"
+            local full_target_dir = path_join(user_dir, target_term)
+            -- 确保目录以分隔符结尾
+            if full_target_dir:sub(-1) ~= path_sep then
+                full_target_dir = full_target_dir .. path_sep
             end
-            full_target_path = full_target_dir .. src_filename
+            full_target_path = path_join(full_target_dir, src_filename)
             target_dir = full_target_dir
         end
         
@@ -1154,7 +1171,7 @@ local function handleFileCopyMove(input, seg, env)
         local dirs = get_dir_cache(env)
         local dir_items = {}
         for _, dir in ipairs(dirs) do
-            table.insert(dir_items, dir .. "/")  -- 目录标记
+            table.insert(dir_items, dir .. path_sep)  -- 目录标记
         end
         
         -- 模糊搜索目标目录（支持多关键词）
