@@ -181,6 +181,8 @@ function M.func(input, env)
             table_insert(fc_candidates, cand)
         elseif contains_digit_no_alpha(text) then
             table_insert(digit_candidates, cand)
+        elseif cand.text == "呣" or cand.text == "呒" then
+            table_insert(pinyin_candidates, cand)
         elseif contains_alpha(text) then
             table_insert(alnum_candidates, cand)
         elseif not contains_chinese(text) then
@@ -238,9 +240,9 @@ function M.func(input, env)
     local other_wubici = {}
     local useless_candidates = {}
     local yc_candidates = {}    -- 预测候选词
-    local short_wubici = {}
     local short_wubi = {}
-    
+    local phrase_wubici = {}
+
     for _, cand in ipairs(unique_candidates) do
         local text = cand.text
         local preedit = cand.preedit
@@ -256,11 +258,22 @@ function M.func(input, env)
         elseif iletter_count ~= cletter_count then
             table_insert(useless_candidates, cand)
         elseif cand.type == "phrase" and utf8_len(cand.text) >= 2 then
-            table_insert(short_wubici, cand)
+            table_insert(phrase_wubici, cand)
         elseif cand.type == "phrase" and not preedit:find("['_*]") then
             table_insert(short_wubi, cand)
         else
             table_insert(wubi_wubici, cand)
+        end
+    end
+    
+    local long_wubici = {}
+    local short_wubici = {}
+    
+    for _, cand in ipairs(phrase_wubici) do
+        if utf8.len(env.engine.context.input) >= 4 then
+            table_insert(long_wubici, cand)
+        else
+            table_insert(short_wubici, cand)
         end
     end
     
@@ -477,7 +490,7 @@ function M.func(input, env)
               end
           end
           if not context:get_option("chinese_english") and not context:get_option("yin") then
-              for _, cand in ipairs(short_wubici) do
+              for _, cand in ipairs(long_wubici) do
                  yield(cand)
               end
               for _, cand in ipairs(before_wubici) do

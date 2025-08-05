@@ -1,4 +1,4 @@
---7.29 Windows适配版
+--8.5 进阶版
 local T = {}
 
 T.prefix = "Z"
@@ -61,59 +61,56 @@ local function path_join(...)
     return result
 end
 
--- 获取用户数据目录下的文件列表（带缓存）
+-- 获取用户数据目录下的文件列表（实时刷新，不使用缓存）
 local function get_file_cache(env)
-    if not env.file_cache then
-        env.file_cache = {}
-        local user_dir = rime_api.get_user_data_dir()
-        
-        -- 跨平台文件扫描命令
-        local cmd
-        if path_sep == '\\' then  -- Windows
-            cmd = string.format('dir /b /s /a-d "%s"', user_dir)
-        else  -- Linux/Mac
-            cmd = string.format('find "%s" -type f', user_dir)
-        end
-        
-        local handle = io.popen(cmd)
-        if handle then
-            for path in handle:lines() do
-                -- 转换为相对于用户数据目录的路径
-                -- 使用正确的分隔符替换
-                local rel_path = path:gsub(user_dir .. path_sep, "")
-                table.insert(env.file_cache, rel_path)
-            end
-            handle:close()
-        end
+    -- 移除缓存机制，每次调用都重新扫描
+    local files = {}
+    local user_dir = rime_api.get_user_data_dir()
+    
+    -- 跨平台文件扫描命令
+    local cmd
+    if path_sep == '\\' then  -- Windows
+        cmd = string.format('dir /b /s /a-d "%s"', user_dir)
+    else  -- Linux/Mac
+        cmd = string.format('find "%s" -type f', user_dir)
     end
-    return env.file_cache
+    
+    local handle = io.popen(cmd)
+    if handle then
+        for path in handle:lines() do
+            -- 转换为相对于用户数据目录的路径
+            local rel_path = path:gsub(user_dir .. path_sep, "")
+            table.insert(files, rel_path)
+        end
+        handle:close()
+    end
+    return files
 end
 
--- 获取用户数据目录下的文件夹列表（带缓存）
+-- 获取用户数据目录下的文件夹列表（实时刷新，不使用缓存）
 local function get_dir_cache(env)
-    if not env.dir_cache then
-        env.dir_cache = {}
-        local user_dir = rime_api.get_user_data_dir()
-        
-        -- 跨平台文件夹扫描命令
-        local cmd
-        if path_sep == '\\' then  -- Windows
-            cmd = string.format('dir /b /s /ad "%s"', user_dir)
-        else  -- Linux/Mac
-            cmd = string.format('find "%s" -type d', user_dir)
-        end
-        
-        local handle = io.popen(cmd)
-        if handle then
-            for path in handle:lines() do
-                -- 转换为相对于用户数据目录的路径
-                local rel_path = path:gsub(user_dir .. path_sep, "")
-                table.insert(env.dir_cache, rel_path)
-            end
-            handle:close()
-        end
+    -- 移除缓存机制，每次调用都重新扫描
+    local dirs = {}
+    local user_dir = rime_api.get_user_data_dir()
+    
+    -- 跨平台文件夹扫描命令
+    local cmd
+    if path_sep == '\\' then  -- Windows
+        cmd = string.format('dir /b /s /ad "%s"', user_dir)
+    else  -- Linux/Mac
+        cmd = string.format('find "%s" -type d', user_dir)
     end
-    return env.dir_cache
+    
+    local handle = io.popen(cmd)
+    if handle then
+        for path in handle:lines() do
+            -- 转换为相对于用户数据目录的路径
+            local rel_path = path:gsub(user_dir .. path_sep, "")
+            table.insert(dirs, rel_path)
+        end
+        handle:close()
+    end
+    return dirs
 end
 
 -- 模糊文件搜索核心函数
@@ -240,244 +237,256 @@ end
 
 -- 处理文件/文件夹创建和删除请求
 local function handleFileSystemRequest(input, seg, env)
-    -- 匹配删除文件命令（优化版：支持中间阶段的文件检索）
+    -- 匹配删除文件命令（中间阶段）：Zdel"关键词"或Zdel"关键词数字"
     local del_partial_pattern = "^Zdel\"(.-)\"?$"
     local del_path_part = input:match(del_partial_pattern)
     
-    -- 优先处理删除命令的中间阶段
-    if del_path_part and not input:match("^Zdel\".+\"$") then
-        -- 提取搜索词（支持空格分隔多个关键词）
+    if del_path_part then
+        -- 提取数字选重（从末尾提取连续数字）
+        local selection_index = nil
+        local index_str = ""
+        for i = #del_path_part, 1, -1 do
+            local char = del_path_part:sub(i, i)
+            if char:match("%d") then
+                index_str = char .. index_str
+            else
+                break
+            end
+        end
+        
+        -- 分离关键词和选重数字
+        local search_term = del_path_part
+        if #index_str > 0 and #del_path_part > #index_str then
+            selection_index = tonumber(index_str)
+            search_term = del_path_part:sub(1, #del_path_part - #index_str)
+        end
+        
+        -- 处理空关键词
         local search_terms = {}
-        for term in del_path_part:gmatch("%S+") do
+        for term in search_term:gmatch("%S+") do
             if term ~= "" then
                 table.insert(search_terms, term:lower())
             end
         end
         
-        -- 无搜索词时显示提示
         if #search_terms == 0 then
-            yield(Candidate(input, seg.start, seg._end, "请输入要删除的文件关键词（支持空格分隔）", ""))
+            yield(Candidate(input, seg.start, seg._end, "请输入要删除的文件关键词", ""))
             return true
         end
         
-        -- 获取文件列表并模糊匹配
+        -- 搜索匹配文件
         local files = get_file_cache(env)
         local results = fuzzy_search_files(search_terms, files)
-        
-        -- 按路径长度排序
         table.sort(results, function(a, b) return #a < #b end)
         
-        -- 显示匹配结果
-        if #results > 0 then
-            yield(Candidate(input, seg.start, seg._end, "匹配到 "..#results.." 个文件", "请补全文件名或添加数字索引"))
+        -- 处理数字选重
+        if selection_index then
+            if selection_index > 0 and selection_index <= #results then
+                -- 选重有效时，仅保留选中项
+                results = {results[selection_index]}
+            else
+                yield(Candidate(input, seg.start, seg._end, "选重索引无效，范围1-"..#results, ""))
+                return true
+            end
+        end
+        
+        -- 显示结果或处理确认
+        if #results == 0 then
+            yield(Candidate(input, seg.start, seg._end, "未找到匹配文件: "..search_term, ""))
+            return true
+        elseif input:match("^Zdel\".+\"$") then
+            -- 完整命令（已输入第二个"），执行删除
+            local target_file = results[1]
+            local user_dir = rime_api.get_user_data_dir()
+            local full_path = path_join(user_dir, target_file)
+            
+            local success, err = os.remove(full_path)
+            if success then
+                yield(Candidate(input, seg.start, seg._end, "文件删除成功: "..target_file, ""))
+                env.file_cache = nil  -- 刷新缓存
+            else
+                yield(Candidate(input, seg.start, seg._end, "文件删除失败: "..target_file.." - "..(err or ""), ""))
+            end
+            return true
+        else
+            -- 显示候选结果（带索引）
             for i, file in ipairs(results) do
                 yield(Candidate(input, seg.start, seg._end, file, "📁"..i))
             end
             return true
-        else
-            yield(Candidate(input, seg.start, seg._end, "未找到匹配文件: "..del_path_part, ""))
-            return true
         end
     end
 
-    -- 匹配创建文件/文件夹命令
+    -- 匹配创建文件命令
+    local create_partial_pattern = "^Znew\"(.-)\"?$"
+    local create_path_part = input:match(create_partial_pattern)
+    
+    if create_path_part and not input:match("^Znew\".+\"$") then
+        local has_slash = create_path_part:find("/") ~= nil
+        local pre_slash, post_slash = create_path_part:match("^(.-)/(.*)$")
+        pre_slash = pre_slash or create_path_part
+        
+        -- 提取数字选重
+        local selection_index = nil
+        local index_str = ""
+        for i = #pre_slash, 1, -1 do
+            local char = pre_slash:sub(i, i)
+            if char:match("%d") then
+                index_str = char .. index_str
+            else
+                break
+            end
+        end
+        
+        local search_term = pre_slash
+        local selected_dir = nil
+        if #index_str > 0 and #pre_slash > #index_str then
+            selection_index = tonumber(index_str)
+            search_term = pre_slash:sub(1, #pre_slash - #index_str)
+        end
+        
+        -- 获取文件夹列表并匹配
+        local dirs = get_dir_cache(env)
+        local search_terms = {search_term:lower()}
+        local results = fuzzy_search_files(search_terms, dirs)
+        table.sort(results, function(a, b) return #a < #b end)
+        
+        -- 处理数字选重
+        if selection_index and selection_index > 0 and selection_index <= #results then
+            selected_dir = results[selection_index]
+            results = {selected_dir}
+        end
+        
+        -- 显示匹配结果（未选重时优先显示输入内容）
+        if #results > 0 then
+            if has_slash then
+                -- 参考移动模块：未选重时使用输入的文件夹名而非候选
+                local display_dir = selected_dir or pre_slash
+                yield(Candidate(input, seg.start, seg._end, 
+                                display_dir .. "/" .. (post_slash or ""), 
+                                selected_dir and "在" .. selected_dir .. "中创建" or "新建文件夹并创建文件"))
+            else
+                for i, dir in ipairs(results) do
+                    yield(Candidate(input, seg.start, seg._end, dir, "📂"..i))
+                end
+                -- 始终显示用户输入的原始路径作为选项
+                yield(Candidate(input, seg.start, seg._end, pre_slash, "使用输入的文件夹名"))
+            end
+        else
+            yield(Candidate(input, seg.start, seg._end, create_path_part, "创建路径"))
+        end
+        return true
+    end
+
+    -- 匹配完整创建命令
     local create_pattern = "^Znew\"(.*)\"$"
     local create_path = input:match(create_pattern)
-    
-    -- 匹配删除文件/文件夹命令
     local delete_pattern = "^Zdel\"(.*)\"$"
     local delete_path = input:match(delete_pattern)
     
-    -- 没有匹配到任何完整命令
-    if not create_path and not delete_path then return false end
-    
-    local is_create = create_path ~= nil
-    local target_path = create_path or delete_path
-    
-    -- 检查是否是文件夹操作（以/或\结尾）
-    local is_directory = target_path:sub(-1) == "/" or target_path:sub(-1) == "\\"
-    
-    -- 提取选择索引
-    local selection_index = nil
-    local index_str = ""
-    for i = #target_path, 1, -1 do
-        local char = target_path:sub(i, i)
-        if char:match("%d") then
-            index_str = char .. index_str
-        else
-            break
-        end
-    end
-    
-    -- 如果提取到了数字且关键词部分不为空，才视为选择索引
-    if #index_str > 0 and #target_path > #index_str then
-        selection_index = tonumber(index_str)
-        target_path = target_path:sub(1, #target_path - #index_str)
-    end
-    
-    -- 获取对应缓存
-    local items = is_directory and get_dir_cache(env) or get_file_cache(env)
-    local search_terms = {target_path:lower()}
-    
-    -- 模糊匹配
-    local matches = fuzzy_search_files(search_terms, items)
-    table.sort(matches, function(a, b) return #a < #b end)
-    
-    -- 处理索引选择
-    if selection_index and selection_index > 0 and selection_index <= #matches then
-        matches = {matches[selection_index]}
-    end
-    
-    -- 如果是创建操作
-    if is_create then
-        -- 如果是文件夹创建
-        if is_directory then
-            -- 如果没有匹配项，直接创建新文件夹
-            if #matches == 0 then
-                local user_dir = rime_api.get_user_data_dir()
-                local full_path = path_join(user_dir, target_path)
-                
-                -- 创建文件夹
-                local cmd
-                if path_sep == '\\' then  -- Windows
-                    cmd = string.format('mkdir "%s"', full_path)
-                else  -- Linux/Mac
-                    cmd = string.format('mkdir -p "%s"', full_path)
-                end
-                
-                local result = os.execute(cmd)
-                if result then
-                    yield(Candidate(input, seg.start, seg._end, "文件夹创建成功: "..target_path, ""))
-                    -- 清除缓存以便下次重新加载
-                    env.dir_cache = nil
-                    return true
-                else
-                    yield(Candidate(input, seg.start, seg._end, "文件夹创建失败: "..target_path, ""))
-                    return true
-                end
+    if create_path then
+        local is_directory = create_path:sub(-1) == "/" or create_path:sub(-1) == "\\"
+        
+        -- 解析路径和选重信息（参考文件移动模块逻辑）
+        local dir_part, file_part = create_path:match("^(.-)/(.*)$")
+        local selection_index = nil
+        local index_str = ""
+        local actual_dir = dir_part or create_path
+        local resolved_dir = nil
+        local use_input_dir = true  -- 默认为使用输入的文件夹名
+        
+        -- 提取文件夹部分的选重索引
+        for i = #actual_dir, 1, -1 do
+            local char = actual_dir:sub(i, i)
+            if char:match("%d") then
+                index_str = char .. index_str
             else
-                -- 显示匹配结果
-                if #matches > 1 then
-                    yield(Candidate(input, seg.start, seg._end, "匹配到多个文件夹: "..#matches.." 个", "请添加数字索引指定"))
-                    for i, dir in ipairs(matches) do
-                        yield(Candidate(input, seg.start, seg._end, dir, "📂"..i))
-                    end
-                    return true
-                else
-                    yield(Candidate(input, seg.start, seg._end, "文件夹已存在: "..matches[1], ""))
-                    return true
-                end
+                break
+            end
+        end
+        
+        -- 处理选重（选重时才使用候选文件夹）
+        if #index_str > 0 and #actual_dir > #index_str then
+            selection_index = tonumber(index_str)
+            actual_dir = actual_dir:sub(1, #actual_dir - #index_str)
+            
+            -- 查找匹配的文件夹
+            local dirs = get_dir_cache(env)
+            local search_terms = {actual_dir:lower()}
+            local dir_matches = fuzzy_search_files(search_terms, dirs)
+            table.sort(dir_matches, function(a, b) return #a < #b end)
+            
+            -- 解析选重的文件夹
+            if selection_index and selection_index > 0 and selection_index <= #dir_matches then
+                resolved_dir = dir_matches[selection_index]
+                use_input_dir = false  -- 选重时不使用输入的文件夹名
+            end
+        end
+        
+        -- 构建实际路径（未选重时强制使用输入的文件夹名）
+        local actual_path
+        if dir_part and file_part then
+            if use_input_dir then
+                -- 未选重：使用输入的文件夹名
+                actual_path = dir_part .. "/" .. file_part
+            else
+                -- 已选重：使用选重的文件夹名
+                actual_path = resolved_dir .. "/" .. file_part
+            end
+        else
+            actual_path = use_input_dir and create_path or resolved_dir
+        end
+        
+        -- 创建操作
+        if is_directory then
+            -- 创建文件夹（始终使用实际路径）
+            local user_dir = rime_api.get_user_data_dir()
+            local full_path = path_join(user_dir, actual_path)
+            
+            local cmd = (path_sep == '\\') 
+                and string.format('mkdir "%s"', full_path)
+                or string.format('mkdir -p "%s"', full_path)
+            
+            local result = os.execute(cmd)
+            if result then
+                yield(Candidate(input, seg.start, seg._end, "文件夹创建成功: "..actual_path, ""))
+                env.dir_cache = nil
+                return true
+            else
+                yield(Candidate(input, seg.start, seg._end, "文件夹创建失败: "..actual_path, ""))
+                return true
             end
         else
             -- 创建文件
-            -- 检查并创建父目录
-            local dir_path = target_path:match("^(.*)[/\\][^/\\]*$")
+            local dir_path = actual_path:match("^(.*)[/\\][^/\\]*$")
             if dir_path then
                 local user_dir = rime_api.get_user_data_dir()
                 local full_dir_path = path_join(user_dir, dir_path)
+                -- 确保目录存在（不存在则创建）
                 if not ensure_directory_exists(full_dir_path) then
                     yield(Candidate(input, seg.start, seg._end, "父目录创建失败: "..dir_path, ""))
                     return true
                 end
             end
             
-            -- 如果没有匹配项，直接创建新文件
-            if #matches == 0 then
-                local user_dir = rime_api.get_user_data_dir()
-                local full_path = path_join(user_dir, target_path)
-                
-                -- 创建文件
-                local file = io.open(full_path, "w")
-                if file then
-                    file:close()
-                    yield(Candidate(input, seg.start, seg._end, "文件创建成功: "..target_path, ""))
-                    -- 清除缓存以便下次重新加载
-                    env.file_cache = nil
-                    return true
-                else
-                    yield(Candidate(input, seg.start, seg._end, "文件创建失败: "..target_path, ""))
-                    return true
-                end
-            else
-                -- 显示匹配结果
-                if #matches > 1 then
-                    yield(Candidate(input, seg.start, seg._end, "匹配到多个文件: "..#matches.." 个", "请添加数字索引指定"))
-                    for i, file in ipairs(matches) do
-                        yield(Candidate(input, seg.start, seg._end, file, "📁"..i))
-                    end
-                    return true
-                else
-                    yield(Candidate(input, seg.start, seg._end, "文件已存在: "..matches[1], ""))
-                    return true
-                end
-            end
-        end
-    else
-        -- 删除操作
-        if is_directory then
-            -- 删除文件夹
-            if #matches == 0 then
-                yield(Candidate(input, seg.start, seg._end, "未找到匹配文件夹: "..target_path, ""))
-                return true
-            elseif #matches > 1 then
-                yield(Candidate(input, seg.start, seg._end, "匹配到多个文件夹: "..#matches.." 个", "请添加数字索引指定"))
-                for i, dir in ipairs(matches) do
-                    yield(Candidate(input, seg.start, seg._end, dir, "📂"..i))
-                end
+            -- 始终使用实际路径创建文件
+            local user_dir = rime_api.get_user_data_dir()
+            local full_path = path_join(user_dir, actual_path)
+            
+            local file = io.open(full_path, "w")
+            if file then
+                file:close()
+                yield(Candidate(input, seg.start, seg._end, "文件创建成功: "..actual_path, ""))
+                env.file_cache = nil
                 return true
             else
-                local user_dir = rime_api.get_user_data_dir()
-                local full_path = path_join(user_dir, matches[1])
-                
-                -- 删除文件夹
-                local cmd
-                if path_sep == '\\' then  -- Windows
-                    cmd = string.format('rmdir /s /q "%s"', full_path)
-                else  -- Linux/Mac
-                    cmd = string.format('rm -rf "%s"', full_path)
-                end
-                
-                local result = os.execute(cmd)
-                if result then
-                    yield(Candidate(input, seg.start, seg._end, "文件夹删除成功: "..matches[1], ""))
-                    -- 清除缓存以便下次重新加载
-                    env.dir_cache = nil
-                    env.file_cache = nil
-                    return true
-                else
-                    yield(Candidate(input, seg.start, seg._end, "文件夹删除失败: "..matches[1], ""))
-                    return true
-                end
-            end
-        else
-            -- 删除文件
-            if #matches == 0 then
-                yield(Candidate(input, seg.start, seg._end, "未找到匹配文件: "..target_path, ""))
+                yield(Candidate(input, seg.start, seg._end, "文件创建失败: "..actual_path, ""))
                 return true
-            elseif #matches > 1 then
-                yield(Candidate(input, seg.start, seg._end, "匹配到多个文件: "..#matches.." 个", "请添加数字索引指定"))
-                for i, file in ipairs(matches) do
-                    yield(Candidate(input, seg.start, seg._end, file, "📁"..i))
-                end
-                return true
-            else
-                local user_dir = rime_api.get_user_data_dir()
-                local full_path = path_join(user_dir, matches[1])
-                
-                -- 删除文件
-                local success, err = os.remove(full_path)
-                if success then
-                    yield(Candidate(input, seg.start, seg._end, "文件删除成功: "..matches[1], ""))
-                    -- 清除缓存以便下次重新加载
-                    env.file_cache = nil
-                    return true
-                else
-                    yield(Candidate(input, seg.start, seg._end, "文件删除失败: "..matches[1].." - "..(err or ""), ""))
-                    return true
-                end
             end
         end
     end
+    
+    return false
 end
 
 -- 处理文件内容替换请求
@@ -1295,8 +1304,509 @@ local function handleFileCopyMove(input, seg, env)
     return false
 end
 
+local T = {}
+
+T.prefix = "Z"
+local regex_enabled = true
+local regex_api = {
+    enable = function() regex_enabled = true end,
+    disable = function() regex_enabled = false end,
+    is_enabled = function() return regex_enabled end
+}
+
+-- 工具函数：提取单个UTF-8字符
+local function utf8_char(str, index)
+    if not utf8.offset then
+        return string.sub(str, index, index)
+    end
+    local start_byte = utf8.offset(str, index)
+    if not start_byte then return nil end
+    local end_byte = utf8.offset(str, index + 1) or #str + 1
+    return string.sub(str, start_byte, end_byte - 1)
+end
+
+-- 提取行中所有目标字符（中文等非字母数字空格）
+local function get_target_chars(line)
+    local chars = {}
+    if not line or line == "" then return chars end
+    
+    if utf8.len then
+        local len = utf8.len(line)
+        if not len then return chars end
+        
+        for i = 1, len do
+            local c = utf8_char(line, i)
+            if c and not c:match("^[a-zA-Z0-9%s]$") then
+                chars[c] = true
+            end
+        end
+    else
+        for i = 1, #line do
+            local c = string.sub(line, i, i)
+            if not c:match("^[a-zA-Z0-9%s]$") then
+                chars[c] = true
+            end
+        end
+    end
+    
+    return chars
+end
+
+-- 解析文件路径（支持关键词检索和数字选重）
+local function resolve_file_path_custom(input_path, env)
+    local selection_index = nil
+    local index_str = ""
+    for i = #input_path, 1, -1 do
+        local char = input_path:sub(i, i)
+        if char:match("%d") then
+            index_str = char .. index_str
+        else
+            break
+        end
+    end
+    
+    local term_part = input_path
+    if #index_str > 0 and #input_path > #index_str then
+        selection_index = tonumber(index_str)
+        term_part = input_path:sub(1, #input_path - #index_str)
+    end
+    
+    local files = get_file_cache(env)
+    local search_terms = {}
+    for term in term_part:gmatch("%S+") do
+        if term ~= "" then
+            table.insert(search_terms, term:lower())
+        end
+    end
+    
+    if #search_terms == 0 then
+        return nil, "请输入文件关键词"
+    end
+    
+    local matches = fuzzy_search_files(search_terms, files)
+    table.sort(matches, function(a, b) return #a < #b end)
+    
+    if selection_index and selection_index > 0 and selection_index <= #matches then
+        matches = {matches[selection_index]}
+    end
+    
+    if #matches == 0 then
+        return nil, "未找到匹配文件: "..term_part
+    elseif #matches ~= 1 then
+        return nil, "匹配到多个文件: "..#matches.." 个，请添加数字索引指定"
+    end
+    
+    return matches[1]
+end
+
+-- 实时文件搜索和提示（自定义版）
+local function show_file_candidates_custom(input, seg, env, current_term, is_first_file)
+    local files = get_file_cache(env)
+    
+    local search_terms = {}
+    for term in current_term:gmatch("%S+") do
+        if term ~= "" then
+            table.insert(search_terms, term:lower())
+        end
+    end
+    
+    if #search_terms == 0 then
+        for i, file in ipairs(files) do
+            if i <= 10 then
+                yield(Candidate(input, seg.start, seg._end, file, "📄"..i))
+            end
+        end
+        return
+    end
+    
+    local matches = fuzzy_search_files(search_terms, files)
+    table.sort(matches, function(a, b) return #a < #b end)
+    
+    local selection_index = nil
+    local index_str = ""
+    for i = #current_term, 1, -1 do
+        local char = current_term:sub(i, i)
+        if char:match("%d") then
+            index_str = char .. index_str
+        else
+            break
+        end
+    end
+    
+    if #index_str > 0 and #current_term > #index_str then
+        selection_index = tonumber(index_str)
+        local term_part = current_term:sub(1, #current_term - #index_str)
+        search_terms = {}
+        for term in term_part:gmatch("%S+") do
+            if term ~= "" then
+                table.insert(search_terms, term:lower())
+            end
+        end
+        matches = fuzzy_search_files(search_terms, files)
+        table.sort(matches, function(a, b) return #a < #b end)
+        
+        if selection_index and selection_index > 0 and selection_index <= #matches then
+            matches = {matches[selection_index]}
+        end
+    end
+    
+    if #matches > 0 then
+        for i, file in ipairs(matches) do
+            if i <= 10 then
+                yield(Candidate(input, seg.start, seg._end, file, "📄"..i))
+            end
+        end
+    else
+        yield(Candidate(input, seg.start, seg._end, "未找到匹配文件", "请检查关键词或继续输入"))
+    end
+end
+
+-- 字符串分割函数（辅助函数）
+function string:split(sep)
+    local sep, fields = sep or ":", {}
+    local pattern = string.format("([^%s]+)", sep)
+    self:gsub(pattern, function(c) fields[#fields+1] = c end)
+    return fields
+end
+
+-- 获取行的第一个特殊字符
+local function get_first_target_char(line)
+    if not line or line == "" then return nil end
+    
+    if utf8.len then
+        local len = utf8.len(line)
+        if not len then return nil end
+        
+        for i = 1, len do
+            local c = utf8_char(line, i)
+            if c and not c:match("^[a-zA-Z0-9%s]$") then
+                return c
+            end
+        end
+    else
+        for i = 1, #line do
+            local c = string.sub(line, i, i)
+            if not c:match("^[a-zA-Z0-9%s]$") then
+                return c
+            end
+        end
+    end
+    
+    return nil
+end
+
+-- 处理文件分组操作（新功能）
+local function handleGroupOperation(input, seg, env)
+    local group_pattern = "^Z_@(.-)&$"
+    local file_path = input:match(group_pattern)
+    if not file_path then
+        return false
+    end
+    
+    local resolved_file, err = resolve_file_path_custom(file_path, env)
+    if not resolved_file then
+        yield(Candidate(input, seg.start, seg._end, err, ""))
+        return true
+    end
+    
+    local user_dir = rime_api.get_user_data_dir()
+    local full_path = path_join(user_dir, resolved_file)
+    
+    local content, err = readFileContent(full_path)
+    if not content then
+        yield(Candidate(input, seg.start, seg._end, "文件读取错误: "..resolved_file.." - "..(err or ""), ""))
+        return true
+    end
+    
+    local char_groups = {}
+    local group_order = {}
+    local group_count = 0
+    
+    for i, line in ipairs(content) do
+        local char = get_first_target_char(line)
+        if char then
+            if not char_groups[char] then
+                char_groups[char] = {}
+                table.insert(group_order, char)
+            end
+            table.insert(char_groups[char], line)
+        end
+    end
+    
+    local result_content = {}
+    for _, char in ipairs(group_order) do
+        local group_lines = char_groups[char]
+        if #group_lines > 1 then
+            group_count = group_count + 1
+        end
+        for _, line in ipairs(group_lines) do
+            table.insert(result_content, line)
+        end
+    end
+    
+    for _, line in ipairs(content) do
+        if not get_first_target_char(line) then
+            table.insert(result_content, line)
+        end
+    end
+    
+    local file_name = resolved_file:match("([^/\\]+)$") or resolved_file
+    local result_filename = file_name:gsub("%..+$", "") .. "_grouped.txt"
+    local result_dir = resolved_file:match("^(.*)[/\\]") or ""
+    local result_path = path_join(user_dir, result_dir, result_filename)
+    
+    local write_ok, write_err = writeFileContent(result_path, result_content)
+    if not write_ok then
+        yield(Candidate(input, seg.start, seg._end, "结果写入失败: "..(write_err or ""), ""))
+        return true
+    end
+    
+    local short_path = result_path:gsub("^"..user_dir..path_sep, "")
+    yield(Candidate(input, seg.start, seg._end, 
+        "分组完成: "..#content.."行 → "..#result_content.."行, "..group_count.."个重复字符组", 
+        "结果文件: "..short_path))
+    
+    return true
+end
+
+-- 处理集合操作（取重、合并、去重）
+local function handleSetOperations(input, seg, env)
+    local filter_pattern = "^Z_@(.-)@(.-)@$"
+    local merge_pattern = "^Z%+@(.-)@(.-)@$"
+    local deduplicate_pattern = "^Z%-@(.-)@(.-)@$"
+    local group_pattern = "^Z_@(.-)&$"
+    
+    local file_path = input:match(group_pattern)
+    if file_path then
+        return handleGroupOperation(input, seg, env)
+    end
+    
+    local op_type, file1_path, file2_path
+    if input:match(filter_pattern) then
+        op_type = "filter"
+        file1_path, file2_path = input:match(filter_pattern)
+    elseif input:match(merge_pattern) then
+        op_type = "merge"
+        file1_path, file2_path = input:match(merge_pattern)
+    elseif input:match(deduplicate_pattern) then
+        op_type = "deduplicate"
+        file1_path, file2_path = input:match(deduplicate_pattern)
+    else
+        if input:match("^Z_@") then
+            local parts = input:sub(4):split("@")
+            if #parts == 0 then
+                yield(Candidate(input, seg.start, seg._end, "请输入第一个文件名关键词", "然后输入@分隔符"))
+                return true
+            elseif #parts == 1 then
+                show_file_candidates_custom(input, seg, env, parts[1], true)
+                return true
+            elseif #parts == 2 then
+                show_file_candidates_custom(input, seg, env, parts[2], false)
+                return true
+            end
+        elseif input:match("^Z%+@") then
+            local parts = input:sub(4):split("@")
+            if #parts == 0 then
+                yield(Candidate(input, seg.start, seg._end, "请输入第一个文件名关键词", "然后输入@分隔符"))
+                return true
+            elseif #parts == 1 then
+                show_file_candidates_custom(input, seg, env, parts[1], true)
+                return true
+            elseif #parts == 2 then
+                show_file_candidates_custom(input, seg, env, parts[2], false)
+                return true
+            end
+        elseif input:match("^Z%-@") then
+            local parts = input:sub(4):split("@")
+            if #parts == 0 then
+                yield(Candidate(input, seg.start, seg._end, "请输入第一个文件名关键词", "然后输入@分隔符"))
+                return true
+            elseif #parts == 1 then
+                show_file_candidates_custom(input, seg, env, parts[1], true)
+                return true
+            elseif #parts == 2 then
+                show_file_candidates_custom(input, seg, env, parts[2], false)
+                return true
+            end
+        end
+        
+        return false
+    end
+    
+    local resolved_file1, err1 = resolve_file_path_custom(file1_path, env)
+    if not resolved_file1 then
+        yield(Candidate(input, seg.start, seg._end, err1, ""))
+        return true
+    end
+    
+    local resolved_file2, err2 = resolve_file_path_custom(file2_path, env)
+    if not resolved_file2 then
+        yield(Candidate(input, seg.start, seg._end, err2, ""))
+        return true
+    end
+    
+    local user_dir = rime_api.get_user_data_dir()
+    local full_path1 = path_join(user_dir, resolved_file1)
+    local full_path2 = path_join(user_dir, resolved_file2)
+    
+    local content1, err1 = readFileContent(full_path1)
+    if not content1 then
+        yield(Candidate(input, seg.start, seg._end, "文件读取错误: "..resolved_file1.." - "..(err1 or ""), ""))
+        return true
+    end
+    
+    local content2, err2 = readFileContent(full_path2)
+    if not content2 then
+        yield(Candidate(input, seg.start, seg._end, "文件读取错误: "..resolved_file2.." - "..(err2 or ""), ""))
+        return true
+    end
+    
+    local result_filename, result_path
+    local file1_name = resolved_file1:match("([^/\\]+)$") or resolved_file1
+    local file2_name = resolved_file2:match("([^/\\]+)$") or resolved_file2
+    
+    if op_type == "filter" then
+        result_filename = file1_name:gsub("%..+$", "") .. "_" .. file2_name:gsub("%..+$", "") .. ".txt"
+    elseif op_type == "merge" then
+        result_filename = file1_name:gsub("%..+$", "") .. "+" .. file2_name:gsub("%..+$", "") .. ".txt"
+    else
+        result_filename = file1_name:gsub("%..+$", "") .. "-" .. file2_name:gsub("%..+$", "") .. ".txt"
+    end
+    
+    local result_dir = resolved_file1:match("^(.*)[/\\]") or ""
+    result_path = path_join(user_dir, result_dir, result_filename)
+    
+    local result_content = {}
+    local success, msg = true, ""
+    
+    if op_type == "filter" then
+        local two_chars = {}
+        for _, line in ipairs(content2) do
+            local line_chars = get_target_chars(line)
+            for c in pairs(line_chars) do
+                two_chars[c] = true
+            end
+        end
+        
+        for _, line in ipairs(content1) do
+            local line_chars = get_target_chars(line)
+            local has_common = false
+            for c in pairs(line_chars) do
+                if two_chars[c] then
+                    has_common = true
+                    break
+                end
+            end
+            if has_common then
+                table.insert(result_content, line)
+            end
+        end
+        
+        msg = string.format("取重完成: %d行 → %d行", #content1, #result_content)
+        
+    elseif op_type == "merge" then
+        local two_char_map = {}
+        for _, line in ipairs(content2) do
+            local clean_line = line:gsub("[\r\n]+", " ")
+            local line_chars = get_target_chars(clean_line)
+            for c in pairs(line_chars) do
+                if not two_char_map[c] then
+                    two_char_map[c] = {}
+                end
+                two_char_map[c][clean_line] = true
+            end
+        end
+        
+        local multi_match_count = 0
+        local total_matches = 0
+        
+        for _, one_line in ipairs(content1) do
+            local clean_one_line = one_line:gsub("[\r\n]+", " ")
+            local one_chars = get_target_chars(clean_one_line)
+            local matched_two_lines = {}
+            
+            for c in pairs(one_chars) do
+                if two_char_map[c] then
+                    for two_line in pairs(two_char_map[c]) do
+                        matched_two_lines[two_line] = true
+                    end
+                end
+            end
+            
+            if next(matched_two_lines) then
+                local two_lines_arr = {}
+                for line in pairs(matched_two_lines) do
+                    table.insert(two_lines_arr, line)
+                end
+                
+                local match_count = #two_lines_arr
+                total_matches = total_matches + match_count
+                
+                if match_count >= 2 then
+                    multi_match_count = multi_match_count + 1
+                end
+                
+                local merged_line = clean_one_line
+                if match_count > 0 then
+                    merged_line = merged_line .. "\t" .. table.concat(two_lines_arr, "\t")
+                end
+                table.insert(result_content, merged_line)
+            end
+        end
+        
+        msg = string.format("合并完成: %d行 + %d行 → %d行 (其中%d行匹配到3个以上)", 
+            #content1, #content2, #result_content, multi_match_count)
+            
+    else
+        local two_chars = {}
+        for _, line in ipairs(content2) do
+            local line_chars = get_target_chars(line)
+            for c in pairs(line_chars) do
+                two_chars[c] = true
+            end
+        end
+        
+        for _, line in ipairs(content1) do
+            local line_chars = get_target_chars(line)
+            local has_common = false
+            for c in pairs(line_chars) do
+                if two_chars[c] then
+                    has_common = true
+                    break
+                end
+            end
+            if not has_common then
+                table.insert(result_content, line)
+            end
+        end
+        
+        msg = string.format("去重完成: %d行 → %d行 (移除%d行)", 
+            #content1, #result_content, #content1 - #result_content)
+    end
+    
+    local write_ok, write_err = writeFileContent(result_path, result_content)
+    if not write_ok then
+        yield(Candidate(input, seg.start, seg._end, "结果写入失败: "..(write_err or ""), ""))
+        return true
+    end
+    
+    local short_path = result_path:gsub("^"..user_dir..path_sep, "")
+    yield(Candidate(input, seg.start, seg._end, msg, "结果文件: "..short_path))
+    
+    return true
+end
+
 function T.func(input, seg, env)
-    -- 先获取当前输入片段
+    -- 先处理集合操作（取重、合并、去重、分组）
+    if handleSetOperations(input, seg, env) then
+        local comp = env.engine.context.composition
+        if not comp:empty() then
+            comp:back().tags = comp:back().tags + Set({"calculator"})
+        end
+        return
+    end
+    
+    -- 保留原大Lua中的其他功能处理逻辑
     local comp = env.engine.context.composition
     if comp:empty() then return end
     local segment = comp:back()
@@ -1316,7 +1826,6 @@ function T.func(input, seg, env)
     -- /wjjc等指令优先
     if startsWith(input, T.prefix) then
         local expr = input:sub(#T.prefix + 1)
-        -- 先检测/wjjc指令，避免被文件查询逻辑拦截
         if expr:find("/wjjc") then
             env.engine.context.input = "/wjjc"
             return
@@ -1341,7 +1850,7 @@ function T.func(input, seg, env)
     local expr = input:sub(#T.prefix + 1)
  
     if expr == "" then
-        yield(Candidate(input, 0,     0, "文件名@内容 检索文件内容", " "))
+        yield(Candidate(input, 0, 0, "文件名@内容 检索文件内容", " "))
         yield(Candidate(input, 0, 0, "文件名2@内容3/ 选择第2个文件候选项，选择第3个内容候选项", " "))
         yield(Candidate(input, 0, 0, "文件名@/ 合并输出整个文件", " "))
         yield(Candidate(input, 0, 0, "文件名@内容/被替换/替换/ 修改内容（支持\\n换行）", " "))
@@ -1350,6 +1859,11 @@ function T.func(input, seg, env)
         yield(Candidate(input, 0, 0, "del\"文件夹/文件名\" 删除文件", " "))
         yield(Candidate(input, 0, 0, "+&原文件&目标路径& 复制文件", " "))
         yield(Candidate(input, 0, 0, "&原文件&目标路径& 移动文件", " "))
+        -- 新增集合操作提示
+        yield(Candidate(input, 0, 0, "_@文件1@文件2@ 取重（保留共同字符行）", " "))
+        yield(Candidate(input, 0, 0, "+@文件1@文件2@ 合并（拼接关联行）", " "))
+        yield(Candidate(input, 0, 0, "-@文件1@文件2@ 去重（移除共同字符行）", " "))
+        yield(Candidate(input, 0, 0, "_@文件& 分组（按首特殊字符分组）", " "))
         segment.prompt = "〔指令提示〕"
         return
     end
@@ -1358,7 +1872,6 @@ function T.func(input, seg, env)
     segment.tags = segment.tags + Set({"calculator"})
 end
  
--- 保留正则开关接口，供未来扩展使用
 function T.toggle_regex(enable)
     if enable ~= nil then
         regex_enabled = enable

@@ -351,7 +351,6 @@ local function export_to_non_ios_path()
     return true
 end
 
--- 文件简词相关功能主要用于编码生成和词条中转，而不负责生成候选词。
 -- 文件简词加载功能（初始化+指令触发）
 local function load_file_shortcuts()
     -- 获取文件路径
@@ -361,6 +360,9 @@ local function load_file_shortcuts()
     -- 清空现有文件简词
     file_user_words = {}
     file_seq_words_dict = {}
+    
+    -- 新增：英文简词存储结构
+    file_english_shortcuts = {}
     
     -- 检查文件是否存在，不存在则创建空文件
     local f, err = io.open(file_path, "r")
@@ -383,7 +385,7 @@ local function load_file_shortcuts()
         end
     end
     
-    -- 读取文件内容并处理（原有逻辑保持不变）
+    -- 读取文件内容并处理
     local lines = {}
     for line in f:lines() do
         table.insert(lines, line)
@@ -393,8 +395,9 @@ local function load_file_shortcuts()
     local processed_count = 0
     local generated_count = 0
     local skipped_count = 0
+    local english_count = 0  -- 新增：英文简词计数
     
-    -- 处理每一行（原有逻辑保持不变）
+    -- 处理每一行
     for i, line in ipairs(lines) do
         -- 跳过空行
         if line == "" then
@@ -402,6 +405,43 @@ local function load_file_shortcuts()
             goto continue
         end
         
+        -- 按制表符分割行
+        local parts = {}
+        for part in line:gmatch("[^\t]+") do
+            table.insert(parts, part)
+        end
+        
+        -- 新增：处理英文简词格式
+        if #parts >= 2 then
+            local candidate_text = parts[1]
+            local code = parts[2]
+            
+            -- 关键识别条件：候选词包含字母 && 编码是纯英文
+            if candidate_text:match("%a") and code:match("^[a-zA-Z]+$") then
+                local weight = 1
+                if #parts >= 3 then
+                    weight = tonumber(parts[3]) or 1
+                end
+                
+                -- 存储到英文简词表
+                file_english_shortcuts[code] = file_english_shortcuts[code] or {}
+                table.insert(file_english_shortcuts[code], {
+                    text = candidate_text,
+                    weight = weight
+                })
+                
+                -- 按权重降序排序
+                table.sort(file_english_shortcuts[code], function(a, b)
+                    return a.weight > b.weight
+                end)
+                
+                english_count = english_count + 1
+                processed_count = processed_count + 1
+                goto continue  -- 跳过原有处理逻辑
+            end
+        end
+        
+        -- 原有处理逻辑保持不变...
         -- 查找第一个制表符位置
         local tab_pos = string.find(line, "\t")
         local word, rest, code
@@ -493,13 +533,13 @@ local function load_file_shortcuts()
     end
     
     log.info(string.format(
-        "[文件简词] 编码生成完成: 处理%d词条 (生成%d编码, 保留%d编码), 跳过%d无效行",
-        processed_count, generated_count, processed_count - generated_count, skipped_count
+        "[文件简词] 编码生成完成: 处理%d词条 (生成%d编码, 保留%d编码), 跳过%d无效行, 英文简词%d",
+        processed_count, generated_count, processed_count - generated_count, skipped_count, english_count
     ))
     
     return true, string.format(
-        "※ 文件简词编码生成: %d词条生效 (%d新生成, %d原编码), %d无效行",
-        processed_count, generated_count, processed_count - generated_count, skipped_count
+        "※ 文件简词编码生成: %d词条生效 (%d新生成, %d原编码), %d无效行, %d英文简词",
+        processed_count, generated_count, processed_count - generated_count, skipped_count, english_count
     )
 end
 
@@ -508,6 +548,7 @@ local function clear_file_shortcuts(env)
     -- 清空内存数据
     file_user_words = {}
     file_seq_words_dict = {}
+    file_english_shortcuts = {}  -- 新增：清空英文简词
     
     -- 删除物理文件
     local file_path = rime_api.get_user_data_dir() .. "/custom_phrase/user.txt"
@@ -727,6 +768,7 @@ function F.func(input, env)
         local added_count = 0
         local current_time = os.time()
         
+        -- 处理普通简词
         for word, code in pairs(file_user_words) do
             -- 检查词条是否已存在（兼容新旧数据结构）
             local exists = false
@@ -741,6 +783,27 @@ function F.func(input, env)
             if not exists then
                 env.permanent_user_words[word] = {code = code, time = current_time}
                 added_count = added_count + 1
+            end
+        end
+        
+        -- 新增：处理英文简词
+        for code, items in pairs(file_english_shortcuts) do
+            for _, item in ipairs(items) do
+                local word = item.text
+                local exists = false
+                
+                if env.permanent_user_words[word] then
+                    if type(env.permanent_user_words[word]) == "table" then
+                        exists = true
+                    elseif type(env.permanent_user_words[word]) == "string" then
+                        exists = (env.permanent_user_words[word] == code)
+                    end
+                end
+                
+                if not exists then
+                    env.permanent_user_words[word] = {code = code, time = current_time}
+                    added_count = added_count + 1
+                end
             end
         end
         
@@ -837,6 +900,15 @@ function F.func(input, env)
     -- 设置候选位置（关键修复：当无原生候选时使用完整输入长度）
     local cand_start = start_pos or 0
     local cand_end = end_pos or input_len
+
+    -- 新增：优先处理英文简词（作为首选候选）
+    if file_english_shortcuts[input_code] then
+        for i = #file_english_shortcuts[input_code], 1, -1 do
+            local item = file_english_shortcuts[input_code][i]
+            local cand = Candidate("english_shortcut", cand_start, cand_end, item.text, "🔼")
+            table.insert(new_candidates, 1, cand)  -- 插入到候选列表头部
+        end
+    end
 
     -- 合并临时词与永久词（临时词在前，永久词在后）
     local combined_words = {}

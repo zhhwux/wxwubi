@@ -21,7 +21,7 @@ function CF.run(cand, env)
     if not dict or #cand.text == 0 then return nil end
     
     -- 处理单字候选
-    if #cand.text == 1 then
+    if utf8.len(cand.text) == 1 then
         local append = process_single_char(dict, cand.text)
         return append ~= cand.text and append or nil
     end
@@ -50,7 +50,7 @@ function ZH.init(env)
         seg:has_tag("add_user_dict")
     ) or false
     env.settings = {
-        chaifen_enabled = env.engine.context:get_option("chaifen") or env.is_radical_mode or input_preedit:find("`") or input_preedit:find("*")
+        chaifen_enabled = env.engine.context:get_option("chaifen") or env.is_radical_mode or input_preedit:find("`") or input_preedit:find("*") and not input_preedit:find("^[ZVRNU/;]")
     }
 end
 
