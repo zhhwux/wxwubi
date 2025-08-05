@@ -39,6 +39,8 @@ switches:
     states: [ 关, 句pīn ] 
   - options: [ comment_off, fuzhu_hint ]   #拼音辅助码滤镜
     states: [ 注关, 辅开 ]
+  - name: chaifen_switch               #开启后在候选的注释里面实时显示辅助码的拆分提醒优先级高于普通辅助提醒，不开启则采用系统配置，快捷键配套ctrl+c,影响的是comment_format，归属：super_comment.lua
+    states: [ 拆分关, 拆分开 ]
   - name: ascii_punct    #中英标点
     states: [ ¥, $ ]
   - name: full_shape
@@ -106,15 +108,16 @@ engine:
     - simplifier@s2t                                #简繁切换通繁
     - simplifier@s2tw                               #简繁切换台繁
     - simplifier@s2hk                               #简繁切换港繁
-    - lua_filter@*search@wanxiang_radical           #部件拆字辅码放在简繁转换之后
+    - lua_filter@*search@wanxiang_reverse           #部件拆字辅码放在简繁转换之后
     - lua_filter@*remove_wubi_filter              #五笔码开关滤镜
     - lua_filter@*temporary_wubi*F                #临时五笔码4码简词
     - lua_filter@*super_sequence*F                  #手动排序，高亮候选 ctrl+j左移动 ctrl+k 右移动 ctrl+0 移除位移 
     - simplifier@emoji                              #Emoji
     - simplifier@chinese_english                    #中英翻译
-    - lua_filter@*cand_comment                     #超级注释模块，支持错词提示、辅助码显示，部件组字读音注释，支持个性化配置和关闭相应的功能，详情搜索super_comment进行详细配置
+    - lua_filter@*cand_comment                     #传递cand.comment到全局变量，用于注音lua，避免被super_comment覆盖
+    - lua_filter@*super_comment                     #超级注释模块，支持错词提示、辅助码显示，部件组字读音注释，支持个性化配置和关闭相应的功能，详情搜索super_comment进行详细配置
+    - lua_filter@*zhuyin                           #注音滤镜
     - lua_filter@*wubi_chaifen                     #拆分滤镜
-    - simplifier@pinyin                            #拼音滤镜 
     - lua_filter@*unicode_display                  #Unicode编码显示
     - lua_filter@*text_formatting                   #给自定义用户词扩展一个换行:\n, 制表符：\t, 回车符：\r, 空格：\s
     - uniquifier                                    # 去重
