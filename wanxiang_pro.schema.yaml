@@ -17,17 +17,17 @@ __include: octagram            #启用语法模型
 schema:
   schema_id: wanxiang_pro
   name: 万象拼音PRO
-  version: "2025-01-01"
+  version: "LTS"
   author:
     - amzxyz
   description: |
-    万象拼音 支持常见双拼方案和全拼输入，辅助码同时支持 全拼拼音；墨奇码;鹤形;自然码;简单鹤;仓颉;五笔码首末;五笔前2;汉心码; 采用万象归一的词库，换方案不换词库，不丢失用户词！
+    万象拼音 支持常见双拼方案和全拼输入，辅助码同时支持 全拼拼音；墨奇码;鹤形;自然码;简单鹤;仓颉;虎码首末;五笔前2;汉心码; 采用万象归一的词库，换方案不换词库，不丢失用户词！
   dependencies:
+    - wanxiang_mixedcode  #中英文混合词汇
     - wanxiang_reverse    # 部件拆字，反查及辅码
     - wanxiang_chaifen    #辅助码拆分注释、翻译注释、行政区划匹配、车牌、等等注释类显示滤镜，Lua专用：super_comment
-    - wanxiang_mixedcode  #中英文混合词汇
-    - wanxiang_charset    #字符集过滤器
     - wubi_lookup 
+    - core2022
     - wubici
 
 # 开关
@@ -44,7 +44,7 @@ switches:
   - name: charset_filter #常用字滤镜
     states: [ 常, 全 ]
   - name: wubi-sentence
-    states: [关, 形句]
+    states: [ 关, 形句 ]
     reset: 0
   - name: wubici
     states: [ 关, 形词 ]
@@ -59,8 +59,10 @@ switches:
     states: [ off, tips ]
   - name: tone_display
     states: [ 关, 句pīn ] 
-  - options: [ comment_off, fuzhu_hint ]   #拼音辅助码滤镜
-    states: [ 注关, 辅开 ]
+  - options: [ comment_off, fuzhu_hint]  #拼音辅助码滤镜
+    states: [ 注关, 辅开]
+  - name: chaifen_switch               #开启后在候选的注释里面实时显示辅助码的拆分提醒优先级高于普通辅助提醒，不开启则采用系统配置，快捷键配套ctrl+c,影响的是comment_format，归属：super_comment.lua
+    states: [ 拆分关, 拆分开 ]
   - name: ascii_punct    #中英标点
     states: [ ¥, $ ]
   - name: full_shape
@@ -81,13 +83,13 @@ engine:
     - chord_composer                       #并击处理器，与置顶参数：是否启用并击，选项配合使用
     #- lua_processor@*select_character     #以词定字，默认左中括号上屏一个词的前一个字，右中括号上屏一个词的后一个字
     - lua_processor@*temporary_wubi*P    #临时五笔码4码简词
-    - lua_processor@*super_sequence*P      #手动排序，高亮候选 ctrl+j左移动 ctrl+k 右移动 ctrl+0 移除位移
+    - lua_processor@*super_sequence*P      #手动排序，高亮候选 ctrl+j左移动 ctrl+k 右移动 ctrl+l 移除位移  ctrl+p 置顶
     - lua_processor@*tone_fallback         #声调辅助回退，当你输入声调数字错误时，继续输入正确的而不用回退删除
-    - lua_processor@*quick_symbol_text2   #快符引导以及重复上屏，配合quick_symbol_text顶层配置清单定义扩展按键
+    - lua_processor@*quick_symbol_text     #快符引导以及重复上屏，配合quick_symbol_text顶层配置清单定义扩展按键
+    - lua_processor@*quick_symbol_text2   #重复上屏
     - lua_processor@*super_tips            #超级提示模块：表情、简码、翻译、化学式、等等靠你想象
     - lua_processor@*limit_repeated        #用于限制最大候选长度以及最大重复输入声母编码长度，避免性能异常
     - lua_processor@*backspace_limit       #防止连续 Backspace 在编码为空时删除已上屏内容
-    - lua_processor@*userdb_sync_delete    #危险操作：通过输入 /del 触发,用于清理自定义同步目录下txt用户词典里被标记c<0的词条，操作步骤：必须先同步、再执行/del、再去部署刷新状态、再去同步回收词典，完成动作。
     - ascii_composer                       #处理英文模式及中英文切换
     - recognizer                           #与 matcher 搭配，处理符合特定规则的输入码，如网址、反查等 tags
     - key_binder                           #在特定条件下将按键绑定到其他按键，如重定义逗号、句号为候选翻页、开关快捷键等
@@ -101,13 +103,12 @@ engine:
     - ascii_segmentor                      #标识英文段落〔譬如在英文模式下〕字母直接上屛
     - matcher                              #配合 recognizer 标识符合特定规则的段落，如网址、反查等，加上特定 tag
     - abc_segmentor                        #标识常规的文字段落，加上 abc 这个 tag
-    - affix_segmentor@radical_lookup       #部件拆字自定义 tag
-    - affix_segmentor@reverse_stroke       #笔画反查自定义 tag
+    - affix_segmentor@wanxiang_reverse     #反查 tag
     - affix_segmentor@add_user_dict        #自造词加词 tag
     - punct_segmentor                      #标识符号段落〔键入标点符号用〕加上 punct 这个 tag
     - fallback_segmentor                   #标识其他未标识段落，必须放在最后帮助tag模式切换后回退重新处理
   translators:
-    - table_translator@wubi_wubici       #五笔单/五笔词/快符翻译器
+    - table_translator@wubi_wubici      #五笔单/五笔词/快符翻译器
     - script_translator@wubi_sentence    #五笔句翻译器
     - punct_translator                     #配合 punct_segmentor 转换标点符号
     - script_translator                    #脚本翻译器，用于拼音、粤拼等基于音节表的输入方案
@@ -118,36 +119,41 @@ engine:
     - lua_translator@*super_calculator     #超级计算器，Lua内查看高级用法
     - lua_translator@*new_statistics      #一个输入统计的脚本，以日、周、月、年、临时等维度的统计
     - lua_translator@*wj
-    - table_translator@wanxiang_mixedcode  #中英等混合词汇表导入
+    - table_translator@custom_phrase       #自定义短语 custom_phrase.txt，用于置顶自定义编码候选词
     - table_translator@chengyu             #简码成语词汇表导入
+    - table_translator@wanxiang_mixedcode  #中英等混合词汇表导入
     - table_translator@wanxiang_reverse    #挂接部件组字和笔画反查
     - script_translator@user_dict_set      #自造词之使用词汇入口
     - script_translator@add_user_dict      #自造词之制造词汇入口
-    - lua_translator@*force_gc             #暴力 GC 降低内存
+    - history_translator@historyDM # 重复上屏 电脑
+    - history_translator@historyDM3 # 重复上屏 电脑3
+    - history_translator@historySJ # 重复上屏 手机
   filters:
-    - lua_filter@*chars_filter                      #字符集过滤
-    - lua_filter@*autocap_filter                    #英文自动大写
+    - lua_filter@*common_filter                    #字符集过滤
     - reverse_lookup_filter@radical_reverse_lookup  #部件拆字滤镜，放在super_comment前面，进一步被超级注释处理以获得拼音编码+辅助码的提示
-    - lua_filter@*super_preedit                     #输入码显示全拼并带上音调
+    - lua_filter@*remove_wubi_filter              #五笔码开关滤镜
+    - lua_filter@*cand_comment                     #传递cand.comment到全局变量，用于注音lua，避免被super_comment覆盖
+    - lua_filter@*super_comment_preedit             #超级注释模块、超级preedit，支持错词提示、辅助码显示，部件组字读音注释，有声调、无声调全拼编码的转换，支持个性化配置和关闭相应的功能，详情搜索super_comment_preedit进行详细配置
     - simplifier@s2t                                #简繁切换通繁
     - simplifier@s2tw                               #简繁切换台繁
     - simplifier@s2hk                               #简繁切换港繁
-    - lua_filter@*search@wanxiang_reverse           #部件拆字辅码放在简繁转换之后
-    - lua_filter@*remove_wubi_filter              #五笔码开关滤镜
     - lua_filter@*temporary_wubi*F                #临时五笔码4码简词
-    - lua_filter@*super_sequence*F                  #手动排序，高亮候选 ctrl+j左移动 ctrl+k 右移动 ctrl+0 移除位移 
+    - lua_filter@*super_sequence*F                  #手动排序，高亮候选 ctrl+j左移动 ctrl+k 右移动 ctrl+l 移除位移  ctrl+p 置顶 
     - simplifier@emoji                              #Emoji
     - simplifier@chinese_english                    #中英翻译
-    - lua_filter@*cand_comment                     #传递cand.comment到全局变量，用于注音lua，避免被super_comment覆盖
-    - lua_filter@*super_comment                     #超级注释模块，支持错词提示、辅助码显示，部件组字读音注释，支持个性化配置和关闭相应的功能，详情搜索super_comment进行详细配置
     - lua_filter@*zhuyin                           #注音滤镜
-    - lua_filter@*wubi_chaifen                     #拆分滤镜
+    - lua_filter@*wubi_chaifen                    #拆分滤镜
     - lua_filter@*unicode_display                  #Unicode编码显示
-    - lua_filter@*text_formatting                   #给自定义用户词扩展一个换行:\n, 制表符：\t, 回车符：\r, 空格：\s
+    - lua_filter@*text_formatting_promote           #给自定义用户词扩展一个换行:\n, 制表符：\t, 回车符：\r, 空格：\s ，并对简码位置提升到第二位，同时保证英文前置避免无效派生干扰
     - uniquifier                                    # 去重
 
+# Tips 配置项
+tips:
+  # 禁用的 tips 类型，初始化 tips 数据库的时候会直接忽略相关规则，修改部署后生效
+  # 可选项为：偏旁，符号，化学式，时间，符号，组字，翻译，表情，货币，车牌
+  disabled_types: []
 
-#shijian:仅仅作为提示使用，编码已经写死，引导适应性更高，如有需求lua中修改
+#shijian:仅仅作为提示使用，编码已经写死，引导键可以在key_binder下修改前缀
 #时间：osj 或者 /sj
 #日期：orq 或者 /rq
 #农历：onl 或者 /nl
@@ -167,6 +173,117 @@ birthday_reminder:  #日期格式：必须是4位数字，格式为MMDD（月份
   lunar_birthdays:  # 农历生日, 姓名: "日期,备注" or 姓名: "日期"
     小明: "0114"
     小红: "0815,农历中秋"
+
+# a/、单字母组合，触发预设编码自动上屏快符，支持将值设为"repeat" 以支持对应按键重复上屏功能，custom>schema>lua最终合并键值
+# 现在就支持26字母快符，结合成对符号输入，这边的压力小一些
+quick_symbol_text:
+  trigger: "^([a-z])/$"
+  symkey:
+    q: "repeat"
+    w: "？"
+    e: "（"
+    r: "）"
+    t: "~"
+    y: "·"
+    u: "『"
+    i: "』"
+    o: "〖"
+    p: "〗"
+    a: "！"
+    s: "……"
+    d: "、"
+    f: "“"
+    g: "”"
+    h: "‘"
+    j: "’"
+    k: "【"
+    l: "】"
+    z: "。”"
+    x: "？”"
+    c: "！”"
+    v: "——"
+    b: "%"
+    n: "《"
+    m: "》"
+
+#通过在有候选的情况下，通过末尾检测到形如\a来触发为第一候选进行成对符号包裹例如nihao\c 候选[你好]
+#trigger只能设置为单符号，因为按下一次锁定第一候选，按下映射开始包裹符号pro用户不能设置为/
+paired_symbols:
+  trigger: "\\"  #(注意反斜杠这是转义写法\\使用时\单反斜杠即可)
+  mirror: true   #包裹后完全替换第一候选true,原候选后移到第二false
+  symkey:
+    a: "()"     #圆括号
+    b: "[]"     #方括号
+    c: "{}"     #花括号
+    d: "<>"     #尖括号
+    e: "\"\""   #英文双引号
+    f: "''"     #英文单引号
+    g: "``"     #反引号
+    h: "「」"   #直角引号
+    i: "『』"   #双直角引号
+    j: "“”"     #中文弯双引号
+    k: "‘’"     #中文弯单引号
+    l: "《》"   #书名号（双）
+    m: "〈〉"   #书名号（单）
+    n: "（）"   #全角圆括号
+    o: "【】"   #黑方头括号
+    p: "〔〕"   #方头括号
+    q: "｛｝"   #全角花括号
+    r: "［］"   #全角方括号
+    s: "〈〉"    #数学尖括号
+    t: "⟨⟩"    #数学角括号
+    u: "⦅⦆"    #白圆括号
+    v: "⦇⦈"    #白方括号
+    w: "❰❱"    #装饰角括号
+    x: "⟪⟫"    #双角括号
+    y: "«»"     #法文双书名号
+    z: "‹›"     #法文单书名号
+    #双字母：其余成对括号族
+    aa: "〖〗"
+    bb: "〘〙"
+    cc: "〚〛"
+    dd: "❨❩"
+    ee: "❪❫"
+    ff: "❬❭"
+    gg: "⦉⦊"
+    hh: "⦋⦌"
+    ii: "⦍⦎"
+    jj: "⦏⦐"
+    kk: "⦑⦒"
+    ll: "❮❯"
+    mm: "⌈⌉"
+    nn: "⌊⌋"
+    oo: "⟦⟧"
+    pp: "⟮⟯"
+    qq: "⟬⟭"
+    rr: "❲❳"
+    ss: "⌜⌝"
+    tt: "⌞⌟"
+    uu: "⸢⸣"
+    vv: "⸤⸥"
+    ww: "﹁﹂"
+    xx: "﹃﹄"
+    yy: "⌠⌡"
+    zz: "⟅⟆"
+    #双字母：重复/运算/标记类
+    md: "**"        #Markdown 粗体
+    it: "__"        #Markdown 斜体（下划线风格）
+    st: "~~"        #删除线
+    eq: "=="
+    pl: "++"
+    mi: "--"
+    sl: "//"
+    bs: "\\\\"      #反斜杠对（Lua 里需写成 "\\\\")
+    at: "@@"
+    dl: "$$"
+    pc: "%%"
+    an: "&&"
+    or: "||"
+    cr: "^^"
+    cl: "::"
+    sc: ";;"
+    ex: "!!"
+    qu: "??"
 
 # Lua 配置：计算器触发关键字
 calculator:
@@ -189,16 +306,25 @@ translator:
   always_show_comments: true    # Rime 默认在 preedit 等于 comment 时取消显示 comment，这里强制一直显示，供super_comment.lua做判断用。
   comment_format: {comment}  #将注释以词典字符串形式完全暴露，通过super_comment.lua完全接管，灵活配置。
   preedit_format:     #影响到输入框的显示和“Shift+回车”上屏的字符，交给super_preedit处理
-    - xform/7/1/
-    - xform/8/2/
-    - xform/9/3/
-    - xform/0/4/
+    - xform/7/¹/
+    - xform/8/²/
+    - xform/9/³/
+    - xform/0/⁴/
+
+# 自定义短语
+custom_phrase:
+  dictionary: ""
+  user_dict: custom_phrase  # 需要手动创建 custom_phrase.txt 文件
+  db_class: stabledb
+  enable_completion: false # 补全提示
+  enable_sentence: false   # 禁止造句
+  initial_quality: 99      # custom_phrase 的权重应该比 pinyin 和 wanxiang_en 大
 
 
-# 简码词库导入位于jm_dicts得txt文件词库
+# 简码词库导入位于dicts得txt文件词库
 chengyu:
   dictionary: ""
-  user_dict: jm_dicts/chengyu
+  user_dict: dicts/chengyu
   db_class: stabledb
   enable_sentence: false
   enable_completion: false
@@ -210,17 +336,9 @@ wanxiang_mixedcode:
   db_class: stabledb
   enable_completion: true
   enable_sentence: false
-  initial_quality: 0.5
+  initial_quality: 2
   comment_format:
     - xform/^.+$//
-
-#中文转英文
-chinese_english:
-  option_name: chinese_english
-  opencc_config: chinese_english.json
-  tips: char
-  comment_format:
-    - "xform/-/ /"
 
 # Emoji
 emoji:
@@ -259,8 +377,9 @@ wanxiang_reverse:
   dictionary: wanxiang_reverse
   db_class: stabledb
   enable_user_dict: false
-  prefix: "`"  # 反查前缀（反查时前缀会消失影响打英文所以设定为两个字母，或可改成一个非字母符号），与 recognizer/patterns/radical_lookup 匹配
-  tips: "〔反查：部件|笔画〕"
+  enable_sentence: false
+  prefix: "`"  # 反查前缀（反查时前缀会消失），与 recognizer/patterns/wanxiang_reverse 匹配
+  tips: "〔反查：拆分|笔画〕"
 
 # 部件拆字滤镜
 radical_reverse_lookup:
@@ -268,19 +387,20 @@ radical_reverse_lookup:
   overwrite_comment: true   #是否覆盖其他提示
   dictionary: wanxiang_pro      #带音调的词典
 
+
 # 处理符合特定规则的输入码，如网址、反查
 recognizer:
   import_preset: default  # 从 default.yaml 继承通用的
   patterns:  # 再增加方案专有的：
     punct: "^/([0-9]|10|[A-Za-z]+)$"    # 响应 symbols.yaml 的 symbols
-    radical_lookup: "^`[A-Za-z]*$"      # 响应部件拆字与笔画的反查，与 radical_lookup/prefix 匹配
+    wanxiang_reverse: "^`[A-Za-z]*$"        # 响应部件拆字与笔画的反查，与 radical_lookup/prefix 匹配
     add_user_dict: "^'[A-Za-z/`']*$"   # 音码自造词
     unicode: "^U[a-f0-9]+"              # 脚本将自动获取第 2 个字符 U 作为触发前缀，响应 lua_translator@unicode，输出 Unicode 字符
     number: "^R[0-9]+[.]?[0-9]*"        # 脚本将自动获取第 2 个字符 R 作为触发前缀，响应 lua_translator@number_translator，数字金额大写
     gregorian_to_lunar: "^N[0-9]{1,8}"  # 脚本将自动获取第 2 个字符 N 作为触发前缀，响应 lua_translator@lunar，公历转农历，输入 N20240115 得到「二〇二三年腊月初五」
     calculator: "^V.*$"                 # 计算器功能引导
-    wj: "^Z.*$"
-
+    wj: "^Z.*$"   
+    
 # 标点符号
 # punctuator 下面有三个子项：
 # 设置为一个映射，就自动上屏；设置为多个映射，如 '/' : [ '/', ÷ ] 则进行复选。
@@ -297,6 +417,9 @@ punctuator:
 # 从 default 继承快捷键
 key_binder:
   import_preset: default  # 从 default.yaml 继承通用的
+  # Lua 配置: 以词定字（上屏当前词句的第一个或最后一个字），和中括号翻页有冲突
+  select_first_character: "bracketleft"  # 左中括号 [
+  select_last_character: "bracketright"  # 右中括号 ]
   sequence: # Lua 配置：手动排序的快捷键 super_sequence.lua，不要用方向键，各种冲突，一定要避免冲突
     up: "Control+j"    # 上移
     down: "Control+k"  # 下移
@@ -306,7 +429,7 @@ key_binder:
   shijian_keys: ["/", "o"]
   # Lua 配置: 超级tips上屏按键
   tips_key: "slash"   #修改时候去default找
-  search: "`"             # 辅码引导符，要添加到 speller/alphabet
+  search: "`"             # 反查引导符，要添加到 speller/alphabet
   bindings:             # 也可以再增加方案专有的
     #- { when: composing, accept: Tab, send: '[' } ## 取消注释后：tab引导辅助码
     - { when: composing, accept: Control+w, send: Control+BackSpace }
@@ -334,7 +457,7 @@ key_binder:
     - { when: composing, accept: Control+6, send_sequence: '{Home}{Shift+Right}{Shift+Right}{Shift+Right}{Shift+Right}{Shift+Right}{Shift+Right}' }
     - { when: composing, accept: Control+7, send_sequence: '{Home}{Shift+Right}{Shift+Right}{Shift+Right}{Shift+Right}{Shift+Right}{Shift+Right}{Shift+Right}' }
 #当输入编码后发现没有词，则通过双击``进入造词模式而且不需要删除编码，这个功能与``直接引导相呼应相配合
-    - { match: "^.*`$", accept: "`", send_sequence: '{BackSpace}{Home}{`}{`}{End}' }
+    #- { match: "^.*`$", accept: "`", send_sequence: '{BackSpace}{Home}{`}{`}{End}' }
 #通过按下/发送/+1节约一个按键，不冲突的时候可以开启
     #- { match: "[a-z]{1,4}", accept: "/",  send_sequence: "/1" }
 #① 翻页 , .
@@ -354,7 +477,6 @@ key_binder:
     - { when: always, toggle: s2t, accept: Control+Shift+4 }       # 切换简繁
     - { when: always, toggle: s2t, accept: Control+Shift+dollar }  # 切换简繁
 
-
 #通过快捷键Control+m开关英文单词
     - { when: has_menu, accept: "Control+m", toggle: english_word }
 #通过快捷键Control+y开关音码
@@ -370,18 +492,17 @@ key_binder:
 #通过快捷键Control+d开关五笔句
     - { when: has_menu, accept: "Control+d", toggle: wubi-sentence }
 
-
 editor:
-   bindings:
-     space: confirm                        # 空格键：上屏候选项
-     Return: commit_raw_input              # 回车键：上屏原始输入
-     Control+Return: commit_script_text    # Ctrl+回车键：上屏变换后输入（经过 preedit转换的）
-     Control+Shift+Return: commit_comment  # Ctrl+Shift+回车键：上屏 comment
-     BackSpace: revert                     # 退格键：向前删除（撤消上次输入）
-     Delete: delete                        # Delete 键：向后删除
-     Control+BackSpace: back_syllable      # Ctrl+退格键：删除一个音节
-     Control+Delete: delete_candidate      # Ctrl+Delete键：删除或降权候选项
-     Escape: cancel                        # Esc 键：取消输入
+  bindings:
+    space: confirm                        # 空格键：上屏候选项
+    Return: commit_raw_input              # 回车键：上屏原始输入
+    Control+Return: commit_script_text    # Ctrl+回车键：上屏变换后输入（经过 preedit转换的）
+    Control+Shift+Return: commit_comment  # Ctrl+Shift+回车键：上屏 comment
+    BackSpace: revert                     # 退格键：向前删除（撤消上次输入）
+    Delete: delete                        # Delete 键：向后删除
+    Control+BackSpace: back_syllable      # Ctrl+退格键：删除一个音节
+    Control+Delete: delete_candidate      # Ctrl+Delete键：删除或降权候选项
+    Escape: cancel                        # Esc 键：取消输入
 
 # 拼写设定
 speller:
@@ -389,19 +510,20 @@ speller:
   auto_select: true
   auto_select_pattern: ^;\w+ #自动上屏规则  对 [;] 引导的编码实行候选唯一自动上屏
   # 如果不想让什么标点直接上屏，可以加在 alphabet，或者编辑标点符号为两个及以上的映射
-  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA7890`;*/
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA7890`;*/\[]
   # initials 定义仅作为始码的按键，排除 ` 让单个的 ` 可以直接上屏
-  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA;
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA;\[]
   delimiter: "''"  # 第一位<空格>是拼音之间的分隔符；第二位<'>表示可以手动输入单引号来分割拼音。
   algebra:
     __patch:
+      #- 模糊音             #模糊音选择性开启
       - set_shuru_schema     #拼音转双拼码
       - set_fuzhu_schema     #辅助码部分
-#      - mohuyin             #模糊音选择性开启
       - tongpei
 ###############################以下是拼写运算规则中全拼转双拼码以及形码的过程，按照不同的方案规则划分段落###########################
 全拼: 
-  __append: 
+  __append:
+    - xform/Ⅰ//  #用于Lua判断输入类型的标记
     - xform/^([a-z]+)(;.*)$/$1④$2/
     - xform/^(.*)ā(.*)(;.*)$/$1a$2①$3/
     - xform/^(.*)á(.*)(;.*)$/$1a$2②$3/
@@ -437,6 +559,7 @@ speller:
 
 自然码: 
   __append:
+    - xform/Ⅱ//  #用于Lua判断输入类型的标记
     - xform/^([a-z]+)(;.*)$/$1④$2/
     - xform/^(.*)ā(.*)(;.*)$/$1a$2①$3/
     - xform/^(.*)á(.*)(;.*)$/$1a$2②$3/
@@ -499,8 +622,10 @@ speller:
     - xform/^ch/Ⓘ/
     - xform/^zh/Ⓥ/
     - xlit/ⓆⓌⓇⓉⓎⓊⒾⓄⓅⓈⒹⒻⒼⒽⓂⒿⒸⓀⓁⓏⓍⓋⒷⓃ/qwrtyuiopsdfghmjcklzxvbn/
+    - xform/^(aj|ak|al|ob|ez|ef)(\d?)(;.*)$//   # 释放非原本自然码规则
 自然龙:    #原作者项目地址： https://github.com/rimeinn/rime-zrlong
   __append:
+    - xform/Ⅺ//  #用于Lua判断输入类型的标记
     - xform/^ēr/eQ/
     - xform/^ér/eK/
     - xform/^ěr/eU/
@@ -563,6 +688,7 @@ speller:
     - xlit/QWERTYUIOPASDFGHMJCKLZXVBN/qwertyuiopasdfghmjcklzxvbn/
 汉心龙:    #原作者项目地址： https://hanxinma.gitlab.io/longma/
   __append:
+    - xform/Ⅻ//  #用于Lua判断输入类型的标记
     - xform/^(a|ā|á|ǎ|à)/Q$1/
     - xform/^(o|ō|ó|ǒ|ò)/R$1/
     - xform/^(e|ē|é|ě|è)/B$1/
@@ -700,6 +826,7 @@ speller:
     - xlit/QWERTYUIOPASDFGHMJCKLZXVBN¥&/qwertyuiopasdfghmjcklzxvbnfc/
 小鹤双拼: 
   __append:
+    - xform/Ⅲ//  #用于Lua判断输入类型的标记
     - xform/^([a-z]+)(;.*)$/$1④$2/
     - xform/^(.*)ā(.*)(;.*)$/$1a$2①$3/
     - xform/^(.*)á(.*)(;.*)$/$1a$2②$3/
@@ -762,9 +889,10 @@ speller:
     - xform/^ch/Ⓘ/
     - xform/^zh/Ⓥ/
     - xlit/ⓆⓌⓇⓉⓎⓊⒾⓄⓅⓈⒹⒻⒼⒽⒿⓀⓁⓏⓍⒸⓋⒷⓃⓂ/qwrtyuiopsdfghjklzxcvbnm/
-
+    - xform/^(aj|ac|ad|ew|ef|oz)(\d?)(;.*)$//
 微软双拼: 
   __append:
+    - xform/Ⅳ//  #用于Lua判断输入类型的标记
     - xform/^([a-z]+)(;.*)$/$1④$2/
     - xform/^(.*)ā(.*)(;.*)$/$1a$2①$3/
     - xform/^(.*)á(.*)(;.*)$/$1a$2②$3/
@@ -830,8 +958,9 @@ speller:
     - xform/^ch/Ⓘ/
     - xform/^zh/Ⓥ/
     - xlit/ⓆⓌⓇⓉⓎⓊⒾⓄⓅⓈⒹⒻⒼⒽⓂⒿⒸⓀⓁⓏⓍⓋⒷⓃ/qwrtyuiopsdfghmjcklzxvbn/
-搜狗双拼: 
+搜狗双拼:
   __append:
+    - xform/Ⅴ//  #用于Lua判断输入类型的标记
     - xform/^([a-z]+)(;.*)$/$1④$2/
     - xform/^(.*)ā(.*)(;.*)$/$1a$2①$3/
     - xform/^(.*)á(.*)(;.*)$/$1a$2②$3/
@@ -897,8 +1026,9 @@ speller:
     - xform/^zh/Ⓥ/
     - xlit/ⓆⓌⓇⓉⓎⓊⒾⓄⓅⓈⒹⒻⒼⒽⓂⒿⒸⓀⓁⓏⓍⓋⒷⓃ/qwrtyuiopsdfghmjcklzxvbn/
 
-紫光双拼: 
+紫光双拼:
   __append:
+    - xform/Ⅶ//  #用于Lua判断输入类型的标记
     - xform/^([a-z]+)(;.*)$/$1④$2/
     - xform/^(.*)ā(.*)(;.*)$/$1a$2①$3/
     - xform/^(.*)á(.*)(;.*)$/$1a$2②$3/
@@ -963,8 +1093,9 @@ speller:
     - xform/^ch/Ⓐ/
     - xlit/ⓌⓉⓎⓊⒾⓄⓅⒶⒼⓈⒹⒻⒽⒿⓀⓁⓏⓍⒷⓃⓂⓆⓇ/wtyuiopagsdfhjklzxbnmqr/
 
-智能ABC: 
+智能ABC:
   __append:
+    - xform/Ⅵ//  #用于Lua判断输入类型的标记
     - xform/^([a-z]+)(;.*)$/$1④$2/
     - xform/^(.*)ā(.*)(;.*)$/$1a$2①$3/
     - xform/^(.*)á(.*)(;.*)$/$1a$2②$3/
@@ -1030,6 +1161,7 @@ speller:
 
 国标双拼:
   __append:
+    - xform/Ⅸ//  #用于Lua判断输入类型的标记
     - xform/^([a-z]+)(;.*)$/$1④$2/
     - xform/^(.*)ā(.*)(;.*)$/$1a$2①$3/
     - xform/^(.*)á(.*)(;.*)$/$1a$2②$3/
@@ -1139,16 +1271,17 @@ speller:
     - derive|^(.*?)(\d?);.*?,.*?,.*?,(\w)(\w).*$|$1$3$4/| # 双拼+2位辅助码+/
     - derive|^(.*?)(\d?);.*?,.*?,.*?,(\w)(\w).*$|$1$3$4o| # 双拼\+2位辅助码\+o，主要用来应对小企鹅这类输入法没法使用符号的场景，但同时有些辅助码会出现异常，如：ui uio>uiuio，手机小企鹅使用时开启
 #特殊优化：部分音节字极少，几乎不参与构词，则提升对应四码字的优先级，仅对自然码双拼有效，其他双拼方案需作对应修改）
-    - derive/^(.*?)(\d?);(bd|dw|df|dw|yl|rw|fs|iw)$/$1$3/
-    - derive/^(.*?)(\d?);.*?,(bd|dw|df|dw|yl|rw|fs|iw)$/$1$3/
-    - derive/^(.*?)(\d?);.*?,.*?,(bd|dw|df|dw|yl|rw|fs|iw)$/$1$3/
-    - derive/^(.*?)(\d?);.*?,.*?,.*?,(bd|dw|df|dw|yl|rw|fs|iw)$/$1$3/
-    - erase/^(.+);(.+)$/    # 删除原始编码加速检索
+#    - derive/^(.*?)(\d?);(bd|dw|df|dw|yl|rw|fs|iw)$/$1$3/
+#    - derive/^(.*?)(\d?);.*?,(bd|dw|df|dw|yl|rw|fs|iw)$/$1$3/
+#    - derive/^(.*?)(\d?);.*?,.*?,(bd|dw|df|dw|yl|rw|fs|iw)$/$1$3/
+#    - derive/^(.*?)(\d?);.*?,.*?,.*?,(bd|dw|df|dw|yl|rw|fs|iw)$/$1$3/
+#    - erase/^(.+);(.+)$/    # 删除原始编码加速检索
     - xform/◯/;/  #对于微软双拼、搜狗双拼，前面将分号保护了起来，现在放出来让其发挥作用
 
 间接辅助:  ########################################位于词库第三个分号后
   __append:
 #以下是双拼运算
+    - xform/ⅲ//  #用于Lua判断是否处于间接辅助的标记
     - derive/^(.*?)(\d?);.*$/$1/ # 纯双拼的情况
     - derive/^(.*?)(\d?);.*$/$1$2/ # 双拼+直接声调的情况
 #分号后面第一组辅助码
@@ -1173,15 +1306,41 @@ speller:
     - derive|^(.*?)(\d?);.*?,.*?,.*?,(\w)(\w).*$|$1$2/$3$4| # 双拼+直接声调+/间接2位辅助码的情况
     - erase/^(.+);(.+)$/    # 删除原始编码加速检索
     - xform/◯/;/  #对于微软双拼、搜狗双拼，前面将分号保护了起来，现在放出来让其发挥作用
-mohuyin:
+模糊音: 
   __append:
-    # 模糊音 可选择性开启
-    - derive/^z([a-z])/v$1/
-    - derive/^c([a-z])/i$1/
-    - derive/^s([a-z])/u$1/
-    - derive/^v([a-z])/z$1/
-    - derive/^i([a-z])/c$1/
-    - derive/^u([a-z])/s$1/
+    # n - l
+    - derive/^l/n
+    - derive/^n/l
+    # r - y     开头
+    - derive/^y/r
+    - derive/^r/y
+    # h - f     开头
+    - derive/^h/f
+    - derive/^f/h
+    # r - l     开头
+    - derive/^r/l
+    - derive/^l/r
+    # k - g     开头
+    - derive/^k/g
+    - derive/^g/k
+    # an - ang
+    - derive/([ui]?)([āáǎàa])ng(.*)$/$1$2n$3
+    - derive/([ui]?)([āáǎàa])n(.*)$/$1$2ng$3
+    # en - eng
+    - derive/([ēéěèe])ng(.*)$/$1n$2
+    - derive/([ēéěèe])n(.*)$/$1ng$2
+    # in - ing
+    - derive/([īíǐìi])ng(.*)$/$1n$2
+    - derive/([īíǐìi])n(.*)$/$1ng$2
+    # c - ch
+    - derive/^c([^h]*)/ch$1
+    - derive/^ch/c
+    # z - zh
+    - derive/^z([^h]*)/zh$1
+    - derive/^zh/z
+    # s - sh
+    - derive/^s([^h]*)/sh$1
+    - derive/^sh/s
 
 tongpei:
   __append:
@@ -1196,13 +1355,15 @@ user_dict_set:
   initial_quality: 0
   enable_completion: false
   enable_sentence: false
-  spelling_hints: 100
+  core_word_length: 4          # >0 启用，按段学词 + 相邻段拼接
+  max_word_length: 7           # >0 启用，过长短语不记整词，只加元素权重
+  spelling_hints: 50
   comment_format:
   preedit_format:     #影响到输入框的显示和“Shift+回车”上屏的字符，交给super_preedit处理
-    - xform/7/1/
-    - xform/8/2/
-    - xform/9/3/
-    - xform/0/4/
+    - xform/7/¹/
+    - xform/8/²/
+    - xform/9/³/
+    - xform/0/⁴/
   enable_user_dict: true
   user_dict: zc
 
@@ -1213,14 +1374,12 @@ add_user_dict:
   dictionary: wanxiang_pro
   initial_quality: -1
   user_dict: zc
-  enable_charset_filter: false # 是否开启字符集过滤
   enable_completion: true # 提前显示尚未输入完整码的字〔仅 table_translator 有效〕
-  enable_encoder: true # 是否开启自动造词〔仅 table_translator 有效〕
-  enable_sentence: true #  是否开启自动造句
   enable_user_dict: true
-  encode_commit_history: false # 是否对已上屛词自动成词〔仅 table_translator 有效〕  
+  spelling_hints: 50
+  enable_auto_phrase: true    # lua造词功能，在custom开启，相关功能位于super_comment_preedit，开启后：模型能造的句子不造词，现有的词不造词，只造词库没有的，选词可造词
   comment_format:
-  prefix: "'"
+  prefix: "``"
   tips: "〔开始造词〕"
 
 #语法模型
@@ -1320,19 +1479,21 @@ set_chord_composer:
         - xform=！=""""!=
         - xform=？=""""?=
         
+historySJ:
+  input: z
+  size: 1
+  initial_quality: 0
+
+historyDM:
+  input: "["
+  size: 99
+  initial_quality: 999
+
+historyDM3:
+  input: "]"
+  size: 99
+  initial_quality: 999
         
-# ↓拼音滤镜
-pinyin:
-  opencc_config: pinyin.json
-  option_name: pinyin
-  show_in_comment: true #作为注解在后面显示
-  comment_format:
-    - "xform/&nbsp;/ /"
-    - "xform/（/ /"
-    - "xform/）/ /"
-  tips: all
-
-
 wubi_sentence:
   dictionary: wubi
   user_dict: ti
@@ -1343,7 +1504,6 @@ wubi_sentence:
   comment_format:
     - xform/~[A-Za-z]*//
 
-
 wubi_wubici:
   dictionary: wubici
   user_dict: custom_phrase/user
@@ -1351,3 +1511,6 @@ wubi_wubici:
   enable_completion: false # 补全提示
   enable_sentence: false   
   initial_quality: 9999
+  four_auto_commit: true   # 4码唯一自动上屏
+  four_auto_clear: false   # 4码空码自动清屏
+  five_commit_four: true   # 5码顶屏
