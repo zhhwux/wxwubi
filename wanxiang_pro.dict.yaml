@@ -23,5 +23,6 @@ import_tables:
   - dicts/poetry.pro          #诗词
   - dicts/place.pro           #地名
   - zuci/ext            # 扩展词库
+  - zuci/moegirl         #萌娘词库
 ...
 
