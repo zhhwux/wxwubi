@@ -1325,31 +1325,32 @@ local function utf8_char(str, index)
     return string.sub(str, start_byte, end_byte - 1)
 end
 
--- 提取行中所有目标字符（中文等非字母数字空格）
+-- 提取行中所有连续的特殊字符块（中文等非字母数字空格）
 local function get_target_chars(line)
-    local chars = {}
-    if not line or line == "" then return chars end
+    local char_blocks = {}
+    if not line or line == "" then return char_blocks end
+
+    local current_block = ""
     
-    if utf8.len then
-        local len = utf8.len(line)
-        if not len then return chars end
-        
-        for i = 1, len do
-            local c = utf8_char(line, i)
-            if c and not c:match("^[a-zA-Z0-9%s]$") then
-                chars[c] = true
-            end
-        end
-    else
-        for i = 1, #line do
-            local c = string.sub(line, i, i)
-            if not c:match("^[a-zA-Z0-9%s]$") then
-                chars[c] = true
+    -- 遍历字符串，组装连续的特殊字符块
+    for i = 1, #line do
+        local c = string.sub(line, i, i)
+        if not c:match("^[a-zA-Z0-9%s]$") then
+            current_block = current_block .. c
+        else
+            if current_block ~= "" then
+                char_blocks[current_block] = true
+                current_block = ""
             end
         end
     end
     
-    return chars
+    -- 别忘了最后一个块
+    if current_block ~= "" then
+        char_blocks[current_block] = true
+    end
+    
+    return char_blocks
 end
 
 -- 解析文件路径（支持关键词检索和数字选重）
@@ -1757,26 +1758,37 @@ local function handleSetOperations(input, seg, env)
         msg = string.format("合并完成: %d行 + %d行 → %d行 (其中%d行匹配到3个以上)", 
             #content1, #content2, #result_content, multi_match_count)
             
-    else
-        local two_chars = {}
+    else -- 这是去重 (-@) 的逻辑
+        -- 构建文件2中所有“连续特殊字符块”的集合
+        local two_char_blocks = {}
         for _, line in ipairs(content2) do
-            local line_chars = get_target_chars(line)
-            for c in pairs(line_chars) do
-                two_chars[c] = true
+            local blocks = get_target_chars(line)
+            for block in pairs(blocks) do
+                two_char_blocks[block] = true
             end
         end
-        
+
+        -- 检查文件1的每一行
         for _, line in ipairs(content1) do
-            local line_chars = get_target_chars(line)
-            local has_common = false
-            for c in pairs(line_chars) do
-                if two_chars[c] then
-                    has_common = true
-                    break
-                end
-            end
-            if not has_common then
+            local has_common_block = false
+            local blocks = get_target_chars(line)
+            
+            -- 如果行中没有任何特殊字符块，则保留该行
+            if not next(blocks) then
                 table.insert(result_content, line)
+            else
+                -- 检查该行的所有特殊字符块
+                for block in pairs(blocks) do
+                    -- 如果有任何一个块在文件2中存在，则认为是重复行，标记并跳出
+                    if two_char_blocks[block] then
+                        has_common_block = true
+                        break
+                    end
+                end
+                -- 只有当该行没有任何一个特殊字符块在文件2中出现时，才保留
+                if not has_common_block then
+                    table.insert(result_content, line)
+                end
             end
         end
         

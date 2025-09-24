@@ -1,4 +1,4 @@
-local schema_name = "万象虎"
+local schema_name = "万象五笔"
 local software_name = rime_api.get_distribution_code_name() or ""
 local software_version = rime_api.get_distribution_version() or ""
 -- 合并平台名称和版本信息
@@ -359,6 +359,11 @@ local function init(env)
         
         -- 排除统计命令和报告内容
         if commit_text == "" or is_summary_command(commit_text) then return end
+        
+        -- 关键过滤：排除以特殊符号开头的文本（如时间、日期候选）
+        if commit_text:match("^[※◉]") then return end
+        
+        -- 排除我们自己生成的统计候选
         local cand = ctx:get_selected_candidate()
         if cand and cand.comment == "input_stats_summary" then return end
 

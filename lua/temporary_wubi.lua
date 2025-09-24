@@ -954,7 +954,7 @@ function F.func(input, env)
                 local cand = combined_words[i]
                 local comment = 
                     cand.type == "permanent" and "⭐" or "*"
-                local new_cand = Candidate(cand.type, 0, input_len, cand.text, comment)
+                local new_cand = Candidate("history", 0, input_len, cand.text, comment) -- <-- 已修改
                 table.insert(new_candidates, insert_position, new_cand)
                 insert_position = insert_position + 1
             end
@@ -963,12 +963,12 @@ function F.func(input, env)
                 local cand = combined_words[i]
                 local comment = 
                     cand.type == "permanent" and "⭐" or "*"
-                local new_cand = Candidate(cand.type, 0, input_len, cand.text, comment)
+                local new_cand = Candidate("history", 0, input_len, cand.text, comment) -- <-- 已修改
                 table.insert(new_candidates, new_cand)
             end
         end
     end
-
+    
     -- 返回最终候选列表
     for _, cand in ipairs(new_candidates) do
         yield(cand)

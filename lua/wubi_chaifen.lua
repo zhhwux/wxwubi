@@ -47,7 +47,7 @@ function ZH.init(env)
     local input_preedit = env.engine.context:get_preedit().text
     local seg = env.engine.context.composition:back()
     env.is_radical_mode = seg and (
-        seg:has_tag("add_user_dict")
+        seg:has_tag("yin_add_user")
     ) or false
     env.settings = {
         chaifen_enabled = env.engine.context:get_option("chaifen") or env.is_radical_mode or input_preedit:find("`") or input_preedit:find("*") and not input_preedit:find("^[ZVRNU/;]")
