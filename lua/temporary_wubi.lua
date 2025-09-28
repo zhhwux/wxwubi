@@ -23,12 +23,22 @@ local function get_user_data_dir()
                            or rime_api.get_user_data_dir().."/"
 end
 
--- 去除临时简词末尾的无效符号（code_table中不存在的字符）
-local function trim_trailing_invalid_chars(text)
+-- 去除临时简词前后的无效符号（code_table中不存在的字符）
+local function trim_surrounding_invalid_chars(text)
     local len = utf8.len(text)
     if len == 0 then return text end
     
-    -- 从后往前查找最后一个有效字符的位置
+    -- 1. 从前往后查找第一个有效字符的位置（新增逻辑）
+    local first_valid_index = 1
+    for i = 1, len do
+        local char = utf8_sub(text, i, i)
+        if code_table[char] then
+            first_valid_index = i
+            break
+        end
+    end
+    
+    -- 2. 从后往前查找最后一个有效字符的位置（原有逻辑保留）
     local last_valid_index = len
     for i = len, 1, -1 do
         local char = utf8_sub(text, i, i)
@@ -38,8 +48,8 @@ local function trim_trailing_invalid_chars(text)
         end
     end
     
-    -- 截取到最后一个有效字符
-    return utf8_sub(text, 1, last_valid_index)
+    -- 3. 截取第一个有效字符到最后一个有效字符之间的内容（调整截取范围）
+    return utf8_sub(text, first_valid_index, last_valid_index)
 end
 
 -- 加载永久自造词表（支持新旧格式兼容）
@@ -567,7 +577,7 @@ end
 local function make_update_history(env)
     return function(commit_text)
         -- 去除临时简词末尾的无效符号
-        commit_text = trim_trailing_invalid_chars(commit_text)
+        commit_text = trim_surrounding_invalid_chars(commit_text)
         if commit_text == "" then return end
         
         -- 直接生成编码（内部会过滤非编码表字符）

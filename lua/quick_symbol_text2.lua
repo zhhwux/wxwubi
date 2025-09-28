@@ -93,7 +93,7 @@ local function init(env)
     else
         -- 非iOS设备: 使用模块闭包变量
         -- 直接创建填充好的循环缓冲区
-        if #commit_history == 0 then  -- 首次初始化
+        if #commit_history == 0 then
             for i = 1, 100 do 
                 commit_history[i] = false  -- 使用false标记空槽位
             end
@@ -162,7 +162,9 @@ local function init(env)
             
             for i = 1, env.history_count do
                 local idx = (start_idx + i - 2) % 100 + 1
-                output[i] = env.commit_history[idx]
+                if env.commit_history[idx] then
+                    output[i] = env.commit_history[idx]
+                end
             end
             
             env.engine:commit_text(table.concat(output))
