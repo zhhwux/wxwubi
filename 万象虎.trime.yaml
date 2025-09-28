@@ -3422,12 +3422,12 @@ preset_keyboards:
       - { click: 'a', long_click: select_all, __include: styl/key }
       - {
           click: 's',
-          long_click: '（',
+          long_click: '(',
           __include: styl/key,
         }
       - {
           click: 'd',
-          long_click: '）',
+          long_click: ')',
           __include: styl/key,
         }
       - {

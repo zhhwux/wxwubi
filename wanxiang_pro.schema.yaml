@@ -1481,7 +1481,7 @@ set_chord_composer:
         
 historySJ:
   input: z
-  size: 1
+  size: 3
   initial_quality: 0
 
 historyDM:
