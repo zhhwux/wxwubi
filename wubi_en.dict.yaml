@@ -1,0 +1,10 @@
+# Rime dictionary
+# encoding: utf-8
+#https://github.com/amzxyz/RIME-LMDG
+---
+name: wubi_en
+version: "LTS"
+sort: by_weight
+...
+IT之家	IT'pp'pe
+SD卡	SD'hhu
