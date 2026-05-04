@@ -8,7 +8,6 @@ use_preset_vocabulary: false
 
 import_tables:
   - wubi_dicts/8105     # 字表
-  - wubi_dicts/41448    # 生僻字表
   - wubi_dicts/86_ci    # /引导的句中简词
   - zuci/ext                  #扩展词库
   - zuci/moegirl              #萌娘词库

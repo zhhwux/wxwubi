@@ -3,4 +3,3 @@ patch:
   schema_list:
     - {schema: wubi}         #五笔2-4任意码整句
     - {schema: wanxiang_pro} #拼音方案
-    #- {schema: wubici}       #五笔字词

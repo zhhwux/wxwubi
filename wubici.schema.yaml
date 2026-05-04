@@ -139,8 +139,6 @@ speller:
 key_binder:
   bindings:
     - { accept: semicolon, send: 2, when: has_menu } # 分号次选
-  key_binder/bindings/+: 
-    - { when: has_menu, accept: semicolon, send: 2 } #分号用于次选，微软、搜狗双拼不可启用
     - { when: has_menu, accept: "Control+m", toggle: english_word } #通过快捷键Control+m开关英文
     - { when: has_menu, accept: "Control+y", toggle: pinyin } #通过快捷键Control+y显示注音
     - { when: has_menu, accept: "Control+z", toggle: chaifen } #通过快捷键Control+z开关拆分
@@ -164,11 +162,3 @@ historyDM3:
   input: "]"
   size: 99
   initial_quality: 999
-  
-char_word:
-  dictionary: wubici
-  
-enum:
-    chaifen: all     # 2种选择， char|all 只显示单字拆分|完全拆分
-    zhuyin: 1      # 4种选择， 1|2|3|4 模式1只查单字，模式2只查2字词，以此类推最大为4
-    jianci: 1230    # 2种选择， 1230|1234 四字以上造词规则：取前3字+末字首码|取前4字首码
